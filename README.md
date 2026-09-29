@@ -28,6 +28,10 @@ PYTHONPATH=../hermes-agent uv run --project ../hermes-agent --no-sync python -m 
 CI runs the suite on Linux, macOS and Windows against Hermes 0.21.0 and Hermes main, runs
 `hermes plugins validate`, and repeats daily (with the live tests) to catch upstream changes.
 
+`docs/card.png` is the catalog card. `docs/make_card.py` renders it from the plugin's real
+autocomplete and expansion output and refuses a layout that the docs page hero would crop.
+It lives outside `wiki-ref/`, so installs do not carry it.
+
 ## License
 
 MIT
