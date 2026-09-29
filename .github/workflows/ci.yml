@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Daily: catches Hermes main and Wikipedia API changes between releases.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.12.13"
+      - run: uvx ruff@0.15.10 check .
+
+  test:
+    name: tests (${{ matrix.os }}, Hermes ${{ matrix.hermes.label }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        hermes:
+          # Oldest release the catalog entry claims (requires_hermes: ">=0.21").
+          - {label: "0.21.0", ref: v2026.8.31, python: "3.11", sync: "--extra dev"}
+          - {label: main, ref: main, python: "3.14", sync: "--group dev"}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: plugin
+
+      # Checking out the release tag keeps `hermes --version` at 0.21.0, so the
+      # requires_hermes gate is really exercised. The main checkout is shallow and
+      # tagless; Hermes then reports an unknown version and the gate is permissive.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: NousResearch/hermes-agent
+          ref: ${{ matrix.hermes.ref }}
+          path: hermes
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.12.13"
+
+      - name: Install Hermes ${{ matrix.hermes.label }}
+        working-directory: hermes
+        shell: bash
+        run: uv sync --frozen --python ${{ matrix.hermes.python }} ${{ matrix.hermes.sync }}
+
+      - name: Run tests
+        working-directory: plugin
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/hermes
+          WIKI_REF_LIVE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+        run: uv run --project ../hermes --frozen --no-sync python -m pytest tests -v -p no:cacheprovider
+
+  validate:
+    name: hermes plugins validate (Hermes main)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: plugin
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: NousResearch/hermes-agent
+          ref: main
+          path: hermes
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        with:
+          version: "0.12.13"
+      - name: Install Hermes main
+        working-directory: hermes
+        run: uv sync --frozen --python 3.14 --group dev
+      - name: Validate the plugin
+        working-directory: hermes
+        env:
+          HERMES_HOME: ${{ runner.temp }}/hermes-home
+        run: uv run --frozen --no-sync python -m hermes_cli.main plugins validate "${{ github.workspace }}/plugin/wiki-ref"

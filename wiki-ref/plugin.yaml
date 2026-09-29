@@ -1,0 +1,30 @@
+name: wiki-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @wiki:<title> context references: attach the lead section of a Wikipedia article to a
+  message, with title autocomplete in the TUI and Desktop composer. Disclosure — HTTPS GET to
+  <language>.wikipedia.org only (the referenced title and autocomplete prefix leave the machine);
+  no API key, no files written, no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, wikipedia]
+config_schema:
+  language:
+    type: str
+    default: en
+    label: Wikipedia language
+    description: Wikipedia edition to read, as its code (en, de, fr, simple, zh-yue, ...).
+  max_chars:
+    type: int
+    default: 6000
+    label: Maximum characters
+    description: Longest lead section attached per reference (200 to 50000); longer text is cut at a word boundary.
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference may wait for Wikipedia (1 to 30).
