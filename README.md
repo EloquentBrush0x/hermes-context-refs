@@ -31,9 +31,10 @@ CI runs the suite on Linux, macOS and Windows against Hermes 0.21.0 and Hermes m
 `hermes plugins validate` on each plugin, and repeats daily (with the live tests) to catch upstream
 changes.
 
-`docs/card.png` is the catalog card. `docs/make_card.py` renders it from the plugin's real
-autocomplete and expansion output and refuses a layout that the docs page hero would crop.
-It lives outside `wiki-ref/`, so installs do not carry it.
+`docs/card.png` (wiki-ref) and `docs/osv-ref-card.png` (osv-ref) are the catalog cards.
+`docs/make_card.py` and `docs/make_osv_card.py` render them from each plugin's real output and
+refuse a layout that the docs page hero would crop. They live outside the plugin directories, so
+installs do not carry them.
 
 ## License
 
