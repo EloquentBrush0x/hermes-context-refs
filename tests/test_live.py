@@ -22,6 +22,7 @@ def test_live_article_lead_section(wiki):
     assert lines[0].startswith("Wikipedia (en): Alan Turing")
     assert lines[1] == "https://en.wikipedia.org/wiki/Alan_Turing"
     assert "(resolved from 'alan turing')" in text
+    assert "(;" not in text and "( ;" not in text  # the lead opens "Alan Mathison Turing (; 23 June 1912" raw
     assert "Turing" in text.split("\n\n", 1)[1]
 
 

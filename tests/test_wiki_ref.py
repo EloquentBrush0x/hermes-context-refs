@@ -148,6 +148,51 @@ def test_expand_notes_redirects_disambiguation_and_sections(wiki):
     assert "not #Planet" in text
 
 
+# Openings of real English Wikipedia extracts (TextExtracts, explaintext=1), 2026-09-29.
+@pytest.mark.parametrize("raw, cleaned", [
+    ("Alan Mathison Turing (; 23 June 1912 – 7 June 1954) was",
+     "Alan Mathison Turing (23 June 1912 – 7 June 1954) was"),
+    ("Johann Carl Friedrich Gauss ( ; German: Gauß; 30 April 1777 – 23 February 1855)",
+     "Johann Carl Friedrich Gauss (German: Gauß; 30 April 1777 – 23 February 1855)"),
+    ("Sir Isaac Newton ( ; 4 January 1643 [O.S. 25 December 1642] – 31 March 1727",
+     "Sir Isaac Newton (4 January 1643 [O.S. 25 December 1642] – 31 March 1727"),
+    ("Leonhard Euler ( OY-lər; 15 April 1707 – 18 September 1783)",
+     "Leonhard Euler (OY-lər; 15 April 1707 – 18 September 1783)"),
+    ("Pyotr Ilyich Tchaikovsky (  chy-KOF-skee; 7 May 1840 – 6 November 1893)",
+     "Pyotr Ilyich Tchaikovsky (chy-KOF-skee; 7 May 1840 – 6 November 1893)"),
+    ("Kurt Gödel ( GUR-dəl; German: [ˈkʊʁt ˈɡøːdl̩] ; April 28, 1906 – January 14, 1978)",
+     "Kurt Gödel (GUR-dəl; German: [ˈkʊʁt ˈɡøːdl̩]; April 28, 1906 – January 14, 1978)"),
+    ("Jean-Paul Sartre (, US also ; French: [saʁtʁ]; 21 June 1905 – 15 April 1980)",
+     "Jean-Paul Sartre (French: [saʁtʁ]; 21 June 1905 – 15 April 1980)"),
+    ("René Descartes ( day-KART, also  DAY-kart; French: [ʁəne dekaʁt] ; 31 March 1596",
+     "René Descartes (day-KART, also DAY-kart; French: [ʁəne dekaʁt]; 31 March 1596"),
+    ("Wrocław (Polish: [ˈvrɔt͡swaf] ; German: Breslau [ˈbʁɛslaʊ] ; also known by other names)",
+     "Wrocław (Polish: [ˈvrɔt͡swaf]; German: Breslau [ˈbʁɛslaʊ]; also known by other names)"),
+    ("Maria Salomea Skłodowska Curie  (née Skłodowska; 7 November 1867 – 4 July 1934)",
+     "Maria Salomea Skłodowska Curie (née Skłodowska; 7 November 1867 – 4 July 1934)"),
+])
+def test_clean_extract_drops_empty_pronunciation_remnants(wiki, raw, cleaned):
+    assert wiki.clean_extract(raw) == cleaned
+
+
+@pytest.mark.parametrize("text", [
+    "Sir Timothy John Berners-Lee (born 8 June 1955), also known as TimBL, is",
+    "Gdańsk (Kashubian: Gduńsk; German: Danzig) is",
+    "The printf() function writes output.",
+    "Paris est la capitale de la France ; elle compte 2 millions d'habitants.",
+    "First paragraph.\nSecond paragraph.",
+])
+def test_clean_extract_leaves_ordinary_text_alone(wiki, text):
+    assert wiki.clean_extract(text) == text
+
+
+def test_expand_attaches_the_cleaned_lead_section(wiki):
+    page = {**TURING, "extract": "Alan Mathison Turing (; 23 June 1912 – 7 June 1954) was an English mathematician."}
+    text = run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page))).expand("Alan Turing"))
+    assert "Alan Mathison Turing (23 June 1912 – 7 June 1954) was an English mathematician." in text
+    assert "(;" not in text
+
+
 def test_expand_truncates_at_a_word_boundary(wiki):
     page = {**TURING, "extract": "word " * 200}
     provider = wiki.WikiReferenceProvider(get_config=config(max_chars=200), transport=RecordingTransport(answer(page)))

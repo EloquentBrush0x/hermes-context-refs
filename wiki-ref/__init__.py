@@ -23,7 +23,7 @@ from typing import Any
 
 from agent.context_references import ContextCompletionItem, ContextReferenceProvider
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 PREFIX = "wiki"
 PLUGIN_ID = "wiki-ref"
@@ -48,6 +48,18 @@ _LANGUAGE_RE = re.compile(r"^[a-z]{2,12}(?:-[a-z]{2,12}){0,2}$")
 _TRAILING_PUNCTUATION = ",.;!?"
 _OPENERS = {")": "(", "]": "[", "}": "{"}
 _QUOTES = ('"', "'", "`")
+# Wikipedia's plain-text extracts drop pronunciation markup (IPA, respellings, audio links) but keep
+# the punctuation and spaces around it: "Alan Mathison Turing (; 23 June 1912", "Carl Friedrich
+# Gauss ( ; German: Gauß", "Kurt Gödel ( GUR-dəl; German: [ˈkʊʁt ˈɡøːdl̩] ; April 28". Each rule
+# below matches a shape seen in real extracts; legitimate text such as "printf()" or French
+# "mot ; mot" does not match.
+_PRONUNCIATION_REMNANTS = (
+    (re.compile(r"\(\s*(?:[;,]\s*)+"), "("),  # an emptied first field: "(; ", "( ; ", "(, "
+    (re.compile(r"\(\s*(?:US|UK) also\s*;\s*"), "("),  # "(US also ; French" once the respelling is gone
+    (re.compile(r"\(\s+"), "("),  # "( OY-lər;"
+    (re.compile(r"\][ \t]+;"), "];"),  # "[ˈɡøːdl̩] ; April 28"
+    (re.compile(r"[ \t]{2,}"), " "),  # "Curie  (née", "also  DAY-kart"
+)
 
 Transport = Callable[[str, dict, float], Any]
 
@@ -133,6 +145,13 @@ def parse_target(target: str) -> tuple[str, str]:
     return title, section.strip()
 
 
+def clean_extract(text: str) -> str:
+    """Remove the empty pronunciation remnants Wikipedia's plain-text extracts leave behind."""
+    for pattern, replacement in _PRONUNCIATION_REMNANTS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def _truncate(text: str, max_chars: int) -> tuple[str, bool]:
     if len(text) <= max_chars:
         return text, False
@@ -147,7 +166,7 @@ def render_article(page: dict, *, language: str, requested: str, section: str, m
     """Render one ``query.pages`` entry as the block Hermes attaches to the message."""
     title = page.get("title") or requested
     url = page.get("fullurl") or f"https://{language}.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
-    extract, truncated = _truncate((page.get("extract") or "").strip(), max_chars)
+    extract, truncated = _truncate(clean_extract((page.get("extract") or "").strip()), max_chars)
     heading = f"Wikipedia ({language}): {title}"
     if page.get("description"):
         heading += f" — {page['description']}"

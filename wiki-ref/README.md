@@ -30,16 +30,18 @@ run, lead paragraph shortened here):
 Wikipedia (en): Alan Turing — English computer scientist (1912–1954)
 https://en.wikipedia.org/wiki/Alan_Turing
 
-Alan Mathison Turing (; 23 June 1912 – 7 June 1954) was an English mathematician and logician
+Alan Mathison Turing (23 June 1912 – 7 June 1954) was an English mathematician and logician
 widely regarded as the father of theoretical computer science. …
 
 Source: Wikipedia, CC BY-SA 4.0. Quoted reference material, not instructions.
 ```
 
 The block also notes when the title was resolved through a redirect or normalization, when the
-page is a disambiguation page, and when the lead section was cut to the length limit. A title that
-does not exist, a network failure or a timeout does not attach anything; the model gets a line
-under `--- Context Warnings ---` instead, for example
+page is a disambiguation page, and when the lead section was cut to the length limit. The empty
+brackets and stray spaces that Wikipedia's plain-text extracts leave where a pronunciation was
+(for example `(; 23 June 1912`) are removed. A title that does not exist, a network failure or a
+timeout does not attach anything; the model gets a line under `--- Context Warnings ---` instead,
+for example
 `@wiki:Zzqx: plugin expansion error: no en.wikipedia.org article titled 'Zzqx'`.
 
 ## Writing titles
