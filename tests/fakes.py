@@ -1,4 +1,4 @@
-"""Local stand-ins for the model endpoint, the Wikipedia API and the OSV API, used by the end-to-end tests."""
+"""Local stand-ins for the model endpoint and the Wikipedia, OSV and GitHub APIs, used by the end-to-end tests."""
 
 from __future__ import annotations
 
@@ -58,6 +58,30 @@ def _vuln_answer(identifier: str) -> tuple[int, dict[str, Any]]:
     return 404, {"code": 5, "message": "Vulnerability not found"}
 
 
+# Canned GitHub REST answers keyed by API path, trimmed from real ones.
+GITHUB: dict[str, Any] = {
+    "/repos/NousResearch/hermes-agent/issues/26193": {
+        "number": 26193, "state": "closed", "state_reason": "completed", "comments": 2,
+        "title": "feat(plugins): allow plugins to register custom @<prefix>:<value> context references",
+        "html_url": "https://github.com/NousResearch/hermes-agent/issues/26193",
+        "comments_url": "https://api.github.com/repos/NousResearch/hermes-agent/issues/26193/comments",
+        "user": {"login": "iHeyTang"}, "created_at": "2026-05-15T00:00:00Z", "closed_at": "2026-08-13T00:00:00Z",
+        "labels": [{"name": "type/feature"}, {"name": "comp/plugins"}],
+        "body": "## Summary\n<!-- template hint -->\nLet plugins register new @-prefixes.",
+    },
+    "/repos/NousResearch/hermes-agent/issues/26193/comments": [
+        {"user": {"login": "teknium1"}, "created_at": "2026-06-01T00:00:00Z", "body": "Adopted for round 4."},
+        {"user": {"login": "teknium1"}, "created_at": "2026-08-13T00:00:00Z", "body": "Shipped in #84937."},
+    ],
+}
+
+
+def _github_answer(path: str) -> tuple[int, Any]:
+    if path in GITHUB:
+        return 200, GITHUB[path]
+    return 404, {"message": "Not Found", "status": "404"}
+
+
 def _query_answer(language: str, title: str) -> dict[str, Any]:
     normalized = " ".join(title.replace("_", " ").split())
     page = ARTICLES.get((language, normalized))
@@ -72,12 +96,13 @@ def _opensearch_answer(language: str, search: str) -> list[Any]:
 
 
 class FakeServer:
-    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php`` and ``/v1/vulns/<id>``."""
+    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php``, OSV and GitHub."""
 
     def __init__(self) -> None:
         self.chat_requests: list[dict[str, Any]] = []
         self.wiki_requests: list[dict[str, Any]] = []
         self.osv_requests: list[dict[str, Any]] = []
+        self.github_requests: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -138,6 +163,13 @@ class FakeServer:
                         self._json(200, _opensearch_answer(language, params.get("search", "")))
                     else:
                         self._json(200, _query_answer(language, params.get("titles", "")))
+                    return
+                if self.headers.get("X-Test-Host") == "api.github.com":
+                    with server._lock:
+                        server.github_requests.append({
+                            "path": url.path, "query": url.query, "user_agent": self.headers.get("User-Agent", ""),
+                        })
+                    self._json(*_github_answer(url.path))
                     return
                 if url.path.startswith("/v1/vulns/") and self.headers.get("X-Test-Host") == "api.osv.dev":
                     identifier = urllib.parse.unquote(url.path[len("/v1/vulns/"):])

@@ -1,0 +1,31 @@
+name: gh-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @gh:owner/repo#123 context references: attach a GitHub issue or pull request (title, state,
+  labels, description, latest comments; for pull requests also branches, merge state and change
+  size) to a message. Disclosure — anonymous HTTPS GET to api.github.com only (the referenced
+  owner/repo and number leave the machine; public repositories only); no token, no files written,
+  no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, github, issues, pull-requests]
+config_schema:
+  max_chars:
+    type: int
+    default: 6000
+    label: Maximum characters
+    description: Longest description attached per reference (200 to 50000); longer text is cut at a word boundary.
+  max_comments:
+    type: int
+    default: 10
+    label: Comments
+    description: How many of the latest comments to attach (0 to 50).
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference, follow-up requests included, may wait for GitHub (1 to 30).

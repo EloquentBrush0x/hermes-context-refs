@@ -11,6 +11,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WIKI_DIR = REPO_ROOT / "wiki-ref"
 OSV_DIR = REPO_ROOT / "osv-ref"
+GH_DIR = REPO_ROOT / "gh-ref"
 TESTS_DIR = Path(__file__).resolve().parent
 
 if str(TESTS_DIR) not in sys.path:
@@ -39,6 +40,11 @@ def wiki():
 @pytest.fixture
 def osv():
     return load_plugin_module(OSV_DIR)
+
+
+@pytest.fixture
+def gh():
+    return load_plugin_module(GH_DIR)
 
 
 @pytest.fixture(autouse=True)

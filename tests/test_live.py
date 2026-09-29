@@ -1,4 +1,4 @@
-"""Against the real Wikipedia and OSV APIs. Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it)."""
+"""Against the real Wikipedia, OSV and GitHub APIs. Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import os
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CONTEXT_REFS_LIVE") != "1", reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia and OSV"
+    os.environ.get("CONTEXT_REFS_LIVE") != "1", reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV and GitHub"
 )
 
 
@@ -60,3 +60,33 @@ def test_live_ghsa_and_other_databases(osv):
 def test_live_missing_record(osv):
     with pytest.raises(osv.OsvRecordMissing, match="OSV has no record CVE-2099-0001"):
         run(osv.CveReferenceProvider().expand("CVE-2099-0001"))
+
+
+def _gh(gh, target):
+    try:
+        return run(gh.GitHubReferenceProvider().expand(target))
+    except gh.GhRefError as exc:
+        if "anonymous API limit" in str(exc) or "secondary rate limit" in str(exc):
+            pytest.skip(f"GitHub rate limit on this IP: {exc}")
+        raise
+
+
+def test_live_github_issue_with_comments(gh):
+    text = _gh(gh, "NousResearch/hermes-agent#26193")
+    lines = text.splitlines()
+    assert lines[0].startswith("GitHub issue NousResearch/hermes-agent#26193: ")
+    assert lines[1] == "https://github.com/NousResearch/hermes-agent/issues/26193"
+    assert lines[2].startswith("State: closed")
+    assert "Comments (" in text and "#84937" in text
+
+
+def test_live_github_renamed_repository_pull_request(gh):
+    text = _gh(gh, "https://github.com/Byron/gitoxide/pull/1032")
+    assert text.splitlines()[0].startswith("GitHub pull request GitoxideLabs/gitoxide#1032: ")
+    assert "(resolved from Byron/gitoxide#1032" in text
+    assert "State: merged 2023-09-24" in text and "Branch: " in text
+
+
+def test_live_github_missing_issue(gh):
+    with pytest.raises(gh.GhRefError, match="no issue or pull request NousResearch/hermes-agent#999999999"):
+        _gh(gh, "NousResearch/hermes-agent#999999999")

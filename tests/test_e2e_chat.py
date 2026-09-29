@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import OSV_DIR, TESTS_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, TESTS_DIR, WIKI_DIR
 from fakes import MODEL_ID, REPLY, FakeServer
 
 _SCRUBBED_ENV_PREFIXES = ("OPENAI", "ANTHROPIC", "OPENROUTER", "GIT_", "HERMES_")
@@ -113,3 +113,39 @@ def test_an_unknown_advisory_reaches_the_model_as_a_warning(tmp_path: Path):
         [first_turn, *_] = [m for m in fake.user_messages() if "@ghsa:GHSA-aaaa-bbbb-cccc" in m]
         assert "--- Context Warnings ---" in first_turn, first_turn
         assert "OSV has no record GHSA-aaaa-bbbb-cccc" in first_turn, first_turn
+
+
+def test_a_chat_turn_sends_the_issue_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(GH_DIR,))
+        proc = _chat(home, work, fake.origin, "What shipped for @gh:NousResearch/hermes-agent#26193? One line.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert REPLY in proc.stdout, detail
+        assert [r["path"] for r in fake.github_requests] == [
+            "/repos/NousResearch/hermes-agent/issues/26193", "/repos/NousResearch/hermes-agent/issues/26193/comments",
+        ], fake.github_requests
+        assert fake.github_requests[1]["query"] == "per_page=10&page=1"
+        assert {r["user_agent"].split(" ")[0] for r in fake.github_requests} == {"hermes-gh-ref/1.0.0"}
+        [first_turn, *_] = [m for m in fake.user_messages() if "@gh:NousResearch/hermes-agent#26193" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "GitHub issue NousResearch/hermes-agent#26193: feat(plugins)" in first_turn
+        assert "template hint" not in first_turn
+        assert "--- @teknium1 · 2026-08-13\nShipped in #84937." in first_turn
+
+
+def test_an_unknown_issue_reaches_the_model_as_a_warning(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(GH_DIR,))
+        proc = _chat(home, work, fake.origin, "Explain @gh:o/r#404 briefly.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        [first_turn, *_] = [m for m in fake.user_messages() if "@gh:o/r#404" in m]
+        assert "--- Context Warnings ---" in first_turn, first_turn
+        assert "no issue or pull request o/r#404 is visible without signing in" in first_turn, first_turn

@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Daily: catches Hermes main, Wikipedia API and OSV API changes between releases.
+    # Daily: catches Hermes main, Wikipedia, OSV and GitHub API changes between releases.
     - cron: "23 5 * * *"
   workflow_dispatch:
 
@@ -73,7 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        plugin: [wiki-ref, osv-ref]
+        plugin: [wiki-ref, osv-ref, gh-ref]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

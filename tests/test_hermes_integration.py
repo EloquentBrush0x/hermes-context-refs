@@ -10,7 +10,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from conftest import OSV_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, WIKI_DIR
 
 WIKI_PROBE = textwrap.dedent('''
     import asyncio, json, os, sys
@@ -83,11 +83,44 @@ OSV_PROBE = textwrap.dedent('''
 ''')
 
 
+GH_PROBE = textwrap.dedent('''
+    import json, os
+    from hermes_cli.plugins import discover_plugins, get_plugin_manager
+    from agent.context_references import get_context_reference_providers, preprocess_context_references
+
+    discover_plugins(force=True)
+    listed = {p["name"]: p for p in get_plugin_manager().list_plugins()}
+    providers = get_context_reference_providers()
+    out = {"listed": listed.get("gh-ref"), "providers": {k: type(p).__name__ for k, p in providers.items()}}
+    calls = []
+    issue = {"number": 7, "state": "open", "comments": 3, "title": "Crash on start", "body": "word " * 200,
+             "html_url": "https://github.com/o/r/issues/7",
+             "comments_url": "https://api.github.com/repos/o/r/issues/7/comments"}
+    comments = [{"user": {"login": f"u{i}"}, "created_at": "2026-01-01T00:00:00Z", "body": f"c{i}"} for i in range(3)]
+    def fake(url, timeout):
+        calls.append({"url": url, "timeout": timeout})
+        if "/comments" in url:  # per_page=2: page 1 holds u0, u1; page 2 holds u2
+            return 200, {}, comments[:2] if url.endswith("page=1") else comments[2:]
+        return 200, {}, issue
+    if "gh" in providers:
+        providers["gh"]._transport = fake
+    result = preprocess_context_references("Why does @gh:o/r#7 happen?", cwd=os.getcwd(), context_length=100000)
+    out["message"] = result.message
+    from tui_gateway import server
+    reply = server.handle_request({"jsonrpc": "2.0", "id": 1, "method": "complete.path",
+                                   "params": {"word": "@gh:o/r"}})
+    out["complete"] = reply.get("result", reply)
+    out["calls"] = calls
+    with open(os.environ["PROBE_OUT"], "w", encoding="utf-8") as fh:
+        json.dump(out, fh, default=str)
+''')
+
+
 def _write_home(home: Path, plugins: dict[str, str]) -> None:
     """Install each ``{plugin_dir_name: settings_yaml}`` into ``home`` and enable it."""
     entries = ""
     for name, settings in plugins.items():
-        source = {"wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR}[name]
+        source = {"wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR}[name]
         shutil.copytree(source, home / "plugins" / name, ignore=shutil.ignore_patterns("__pycache__"))
         entries += f"    {name}:\n      settings:\n" + textwrap.indent(settings or "{}\n", "        ")
     (home / "config.yaml").write_text(
@@ -182,3 +215,32 @@ def test_osv_ref_autocomplete_is_empty_and_offline(tmp_path: Path):
 
     assert out["complete"]["items"] == []
     assert [c["url"] for c in out["calls"]] == ["https://api.osv.dev/v1/vulns/CVE-2024-3651"]
+
+
+# -- gh-ref --------------------------------------------------------------------------------------
+
+def test_hermes_loads_gh_ref_next_to_the_others_and_applies_its_settings(tmp_path: Path):
+    home, work = _dirs(tmp_path)
+    settings = "max_chars: 300\nmax_comments: 2\ntimeout_seconds: 7\n"
+    _write_home(home, {"gh-ref": settings, "osv-ref": "", "wiki-ref": ""})
+    out = _probe(GH_PROBE, home, work)
+
+    assert out["listed"]["enabled"] is True
+    assert out["providers"] == {
+        "cve": "CveReferenceProvider", "ghsa": "GhsaReferenceProvider", "osv": "OsvReferenceProvider",
+        "wiki": "WikiReferenceProvider", "gh": "GitHubReferenceProvider",
+    }
+    # 3 comments, 2 wanted: the last page holds one, so the page before it is read too.
+    assert out["calls"][0]["url"] == "https://api.github.com/repos/o/r/issues/7"
+    assert sorted(c["url"] for c in out["calls"][1:]) == [
+        "https://api.github.com/repos/o/r/issues/7/comments?per_page=2&page=1",
+        "https://api.github.com/repos/o/r/issues/7/comments?per_page=2&page=2",
+    ]
+    assert out["calls"][0]["timeout"] == 7
+    message = out["message"]
+    assert "--- Attached Context ---" in message
+    assert "GitHub issue o/r#7: Crash on start" in message
+    assert "(description truncated to 300 characters)" in message
+    assert "Comments (the last 2 of 3, oldest first):\n--- @u1 · 2026-01-01\nc1\n--- @u2 · 2026-01-01\nc2" in message
+    assert "@u0" not in message
+    assert out["complete"]["items"] == []
