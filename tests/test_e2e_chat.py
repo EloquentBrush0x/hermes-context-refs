@@ -125,11 +125,14 @@ def test_a_chat_turn_sends_the_issue_to_the_model(tmp_path: Path):
         detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
         assert proc.returncode == 0, detail
         assert REPLY in proc.stdout, detail
-        assert [r["path"] for r in fake.github_requests] == [
+        # Hermes itself may call api.github.com in the same process (0.21.0's background update
+        # check), and the test routing sends that here too; count the plugin's requests only.
+        plugin = [r for r in fake.github_requests if r["user_agent"].startswith("hermes-gh-ref/")]
+        assert [r["path"] for r in plugin] == [
             "/repos/NousResearch/hermes-agent/issues/26193", "/repos/NousResearch/hermes-agent/issues/26193/comments",
         ], fake.github_requests
-        assert fake.github_requests[1]["query"] == "per_page=10&page=1"
-        assert {r["user_agent"].split(" ")[0] for r in fake.github_requests} == {"hermes-gh-ref/1.0.0"}
+        assert plugin[1]["query"] == "per_page=10&page=1"
+        assert {r["user_agent"].split(" ")[0] for r in plugin} == {"hermes-gh-ref/1.0.0"}
         [first_turn, *_] = [m for m in fake.user_messages() if "@gh:NousResearch/hermes-agent#26193" in m]
         assert "--- Attached Context ---" in first_turn, first_turn
         assert "GitHub issue NousResearch/hermes-agent#26193: feat(plugins)" in first_turn
