@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
   schedule:
-    # Daily: catches Hermes main and Wikipedia API changes between releases.
+    # Daily: catches Hermes main, Wikipedia API and OSV API changes between releases.
     - cron: "23 5 * * *"
   workflow_dispatch:
 
@@ -64,12 +64,16 @@ jobs:
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/hermes
-          WIKI_REF_LIVE: ${{ github.event_name == 'schedule' && '1' || '0' }}
+          CONTEXT_REFS_LIVE: ${{ github.event_name == 'schedule' && '1' || '0' }}
         run: uv run --project ../hermes --frozen --no-sync python -m pytest tests -v -p no:cacheprovider
 
   validate:
-    name: hermes plugins validate (Hermes main)
+    name: hermes plugins validate ${{ matrix.plugin }} (Hermes main)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin: [wiki-ref, osv-ref]
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -87,8 +91,8 @@ jobs:
       - name: Install Hermes main
         working-directory: hermes
         run: uv sync --frozen --python 3.14 --group dev
-      - name: Validate the plugin
+      - name: Validate ${{ matrix.plugin }}
         working-directory: hermes
         env:
           HERMES_HOME: ${{ runner.temp }}/hermes-home
-        run: uv run --frozen --no-sync python -m hermes_cli.main plugins validate "${{ github.workspace }}/plugin/wiki-ref"
+        run: uv run --frozen --no-sync python -m hermes_cli.main plugins validate "${{ github.workspace }}/plugin/${{ matrix.plugin }}"

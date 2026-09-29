@@ -1,0 +1,25 @@
+name: osv-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @cve:, @ghsa: and @osv: context references: attach a vulnerability record from OSV.dev
+  (summary, aliases, severity, affected packages with version ranges and fixed versions, details,
+  references) to a message. Disclosure — HTTPS GET to api.osv.dev only (the referenced id and up to
+  four of its alias ids leave the machine); no API key, no files written, no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, security, vulnerability, osv, cve]
+config_schema:
+  max_chars:
+    type: int
+    default: 4000
+    label: Maximum characters
+    description: Longest advisory text attached per reference (200 to 50000); longer text is cut at a word boundary.
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference, alias lookups included, may wait for OSV (1 to 30).

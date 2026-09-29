@@ -1,4 +1,4 @@
-"""Local stand-ins for the model endpoint and the Wikipedia API, used by the end-to-end tests."""
+"""Local stand-ins for the model endpoint, the Wikipedia API and the OSV API, used by the end-to-end tests."""
 
 from __future__ import annotations
 
@@ -29,6 +29,35 @@ ARTICLES: dict[tuple[str, str], dict[str, Any]] = {
 }
 
 
+# Canned ``/v1/vulns/<id>`` records, trimmed from the real OSV answers.
+VULNS: dict[str, dict[str, Any]] = {
+    "CVE-2024-3651": {
+        "id": "CVE-2024-3651", "summary": "Denial of Service via Quadratic Complexity in kjd/idna",
+        "aliases": ["GHSA-jjg7-2v4v-x38h", "PYSEC-2024-60"],
+        "published": "2024-07-07T17:22:10.032Z", "modified": "2026-09-08T12:39:14.237711128Z",
+        "details": "A vulnerability was identified in the kjd/idna library, in the `idna.encode()` function.",
+        "affected": [{"ranges": [{"type": "GIT", "repo": "https://github.com/kjd/idna", "events": [
+            {"introduced": "001644567c3f1e1c7e62cfff806be7dad1be8cd3"},
+            {"fixed": "1d365e17e10d72d0b7876316fc7b9ca0eebdd38d"}]}]}],
+        "references": [{"type": "ADVISORY", "url": "https://nvd.nist.gov/vuln/detail/CVE-2024-3651"}],
+    },
+    "GHSA-jjg7-2v4v-x38h": {
+        "id": "GHSA-jjg7-2v4v-x38h", "aliases": ["CVE-2024-3651", "PYSEC-2024-60"],
+        "summary": "IDNA vulnerable to denial of service from specially crafted inputs to idna.encode",
+        "database_specific": {"severity": "MODERATE", "cwe_ids": ["CWE-1333"]},
+        "affected": [{"package": {"ecosystem": "PyPI", "name": "idna"},
+                      "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "3.7"}]}]}],
+        "references": [{"type": "FIX", "url": "https://github.com/kjd/idna/commit/1d365e17e10d72d0b7876316fc7b9ca0eebdd38d"}],
+    },
+}
+
+
+def _vuln_answer(identifier: str) -> tuple[int, dict[str, Any]]:
+    if identifier in VULNS:
+        return 200, VULNS[identifier]
+    return 404, {"code": 5, "message": "Vulnerability not found"}
+
+
 def _query_answer(language: str, title: str) -> dict[str, Any]:
     normalized = " ".join(title.replace("_", " ").split())
     page = ARTICLES.get((language, normalized))
@@ -43,11 +72,12 @@ def _opensearch_answer(language: str, search: str) -> list[Any]:
 
 
 class FakeServer:
-    """One HTTP server playing both the OpenAI-compatible model API and ``/w/api.php``."""
+    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php`` and ``/v1/vulns/<id>``."""
 
     def __init__(self) -> None:
         self.chat_requests: list[dict[str, Any]] = []
         self.wiki_requests: list[dict[str, Any]] = []
+        self.osv_requests: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -98,7 +128,7 @@ class FakeServer:
                 url = urllib.parse.urlsplit(self.path)
                 if url.path == "/w/api.php":
                     params = dict(urllib.parse.parse_qsl(url.query))
-                    language = self.headers.get("X-Test-Wiki-Language", "")
+                    language = self.headers.get("X-Test-Host", "").removesuffix(".wikipedia.org")
                     with server._lock:
                         server.wiki_requests.append({
                             "language": language, "params": params,
@@ -108,6 +138,12 @@ class FakeServer:
                         self._json(200, _opensearch_answer(language, params.get("search", "")))
                     else:
                         self._json(200, _query_answer(language, params.get("titles", "")))
+                    return
+                if url.path.startswith("/v1/vulns/") and self.headers.get("X-Test-Host") == "api.osv.dev":
+                    identifier = urllib.parse.unquote(url.path[len("/v1/vulns/"):])
+                    with server._lock:
+                        server.osv_requests.append({"id": identifier, "user_agent": self.headers.get("User-Agent", "")})
+                    self._json(*_vuln_answer(identifier))
                     return
                 if url.path.rstrip("/").endswith("/models"):
                     self._json(200, {"object": "list", "data": [

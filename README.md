@@ -7,10 +7,11 @@ Each plugin lives in its own directory and is installed on its own.
 | Plugin | Reference | Source |
 |---|---|---|
 | [wiki-ref](wiki-ref/) | `@wiki:<title>`: lead section of a Wikipedia article | Wikipedia API, no key |
+| [osv-ref](osv-ref/) | `@cve:<id>`, `@ghsa:<id>`, `@osv:<id>`: a vulnerability record with affected packages and fixed versions | OSV.dev API, no key |
 
 ## Development
 
-The tests run against a Hermes checkout, the same way the plugin runs inside Hermes:
+The tests run against a Hermes checkout, the same way the plugins run inside Hermes:
 
 ```bash
 git clone https://github.com/NousResearch/hermes-agent ../hermes-agent
@@ -18,15 +19,17 @@ git clone https://github.com/NousResearch/hermes-agent ../hermes-agent
 PYTHONPATH=../hermes-agent uv run --project ../hermes-agent --no-sync python -m pytest tests
 ```
 
-- `tests/test_wiki_ref.py`: the provider against Hermes's real reference parser and expander.
-- `tests/test_hermes_integration.py`: loads the plugin through Hermes's plugin manager and checks
+- `tests/test_wiki_ref.py`, `tests/test_osv_ref.py`: each plugin's providers against Hermes's real
+  reference parser and expander.
+- `tests/test_hermes_integration.py`: loads the plugins through Hermes's plugin manager and checks
   settings and `complete.path` autocomplete.
-- `tests/test_e2e_chat.py`: a real `hermes chat` turn against local fake model and Wikipedia
+- `tests/test_e2e_chat.py`: real `hermes chat` turns against local fake model, Wikipedia and OSV
   servers; asserts what reaches the model.
-- `tests/test_live.py`: the real Wikipedia API, only with `WIKI_REF_LIVE=1`.
+- `tests/test_live.py`: the real Wikipedia and OSV APIs, only with `CONTEXT_REFS_LIVE=1`.
 
 CI runs the suite on Linux, macOS and Windows against Hermes 0.21.0 and Hermes main, runs
-`hermes plugins validate`, and repeats daily (with the live tests) to catch upstream changes.
+`hermes plugins validate` on each plugin, and repeats daily (with the live tests) to catch upstream
+changes.
 
 `docs/card.png` is the catalog card. `docs/make_card.py` renders it from the plugin's real
 autocomplete and expansion output and refuses a layout that the docs page hero would crop.

@@ -18,7 +18,7 @@ from agent.context_references import (
     preprocess_context_references_async,
     register_context_reference_provider,
 )
-from conftest import PLUGIN_DIR, RecordingTransport
+from conftest import WIKI_DIR, RecordingTransport
 
 TURING = {
     "pageid": 1208, "ns": 0, "title": "Alan Turing",
@@ -392,7 +392,7 @@ def test_manifest_version_matches_the_module(wiki):
     except ImportError:
         import yaml
 
-    manifest = yaml.safe_load((PLUGIN_DIR / "plugin.yaml").read_text(encoding="utf-8-sig"))
+    manifest = yaml.safe_load((WIKI_DIR / "plugin.yaml").read_text(encoding="utf-8-sig"))
     assert manifest["name"] == wiki.PLUGIN_ID
     assert str(manifest["version"]) == wiki.__version__
     assert set(manifest["config_schema"]) == {"language", "max_chars", "timeout_seconds"}
