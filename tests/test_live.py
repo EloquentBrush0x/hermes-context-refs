@@ -1,4 +1,7 @@
-"""Against the real Wikipedia, OSV, GitHub and PEP sites. Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it)."""
+"""Against the real Wikipedia, OSV, GitHub, PEP and RFC Editor sites.
+
+Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it).
+"""
 
 from __future__ import annotations
 
@@ -9,7 +12,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CONTEXT_REFS_LIVE") != "1",
-    reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV, GitHub and peps.python.org",
+    reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV, GitHub, peps.python.org and the RFC Editor",
 )
 
 
@@ -133,3 +136,13 @@ def test_live_pep_pages_have_the_structure_the_parser_relies_on(pep, number):
     page = pep.parse_page(body.decode("utf-8"))
     assert len(page.sections) >= 2 and all(s.id and s.title for s in page.sections)
     assert page.text.startswith("## ") and "Table of Contents" not in page.text
+
+
+def test_live_rfc_record_obsoleted_rfc_and_missing_number(rfc):
+    provider = rfc.RfcReferenceProvider()
+    lines = run(provider.expand("RFC9110")).splitlines()
+    assert lines[:2] == ["RFC 9110: HTTP Semantics", "https://www.rfc-editor.org/rfc/rfc9110.html"]
+    assert "Abstract:" in lines and lines[lines.index("Abstract:") + 1].startswith("The Hypertext Transfer Protocol")
+    assert any(line.startswith("Note: obsoleted by RFC 7230") for line in run(provider.expand("2616")).splitlines())
+    with pytest.raises(rfc.RfcRefError, match="the RFC Editor has no RFC 26"):
+        run(provider.expand("26"))

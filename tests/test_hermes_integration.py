@@ -10,7 +10,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, PEP_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, WIKI_DIR
 
 WIKI_PROBE = textwrap.dedent('''
     import asyncio, json, os, sys
@@ -150,11 +150,42 @@ PEP_PROBE = textwrap.dedent('''
 ''')
 
 
+RFC_PROBE = textwrap.dedent('''
+    import json, os
+    from hermes_cli.plugins import discover_plugins, get_plugin_manager
+    from agent.context_references import get_context_reference_providers, preprocess_context_references
+
+    discover_plugins(force=True)
+    listed = {p["name"]: p for p in get_plugin_manager().list_plugins()}
+    providers = get_context_reference_providers()
+    out = {"listed": listed.get("rfc-ref"), "providers": {k: type(p).__name__ for k, p in providers.items()}}
+    calls = []
+    record = {"doc_id": "RFC9110", "title": "HTTP Semantics", "status": "INTERNET STANDARD", "format": ["HTML"],
+              "abstract": "The Hypertext Transfer Protocol (HTTP) is a stateless protocol."}
+    def fake(url, timeout):
+        calls.append({"url": url, "timeout": timeout})
+        return (200, json.dumps(record).encode()) if url.endswith("/rfc9110.json") else (404, b"")
+    if "rfc" in providers:
+        providers["rfc"]._transport = fake
+    result = preprocess_context_references("Check @rfc:9110 and @rfc:26", cwd=os.getcwd(), context_length=100000)
+    out["message"] = result.message
+    from tui_gateway import server
+    reply = server.handle_request({"jsonrpc": "2.0", "id": 1, "method": "complete.path",
+                                   "params": {"word": "@rfc:91"}})
+    out["complete"] = reply.get("result", reply)
+    out["calls"] = calls
+    with open(os.environ["PROBE_OUT"], "w", encoding="utf-8") as fh:
+        json.dump(out, fh, default=str)
+''')
+
+
 def _write_home(home: Path, plugins: dict[str, str]) -> None:
     """Install each ``{plugin_dir_name: settings_yaml}`` into ``home`` and enable it."""
     entries = ""
     for name, settings in plugins.items():
-        source = {"wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR, "pep-ref": PEP_DIR}[name]
+        source = {
+            "wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR, "pep-ref": PEP_DIR, "rfc-ref": RFC_DIR,
+        }[name]
         shutil.copytree(source, home / "plugins" / name, ignore=shutil.ignore_patterns("__pycache__"))
         entries += f"    {name}:\n      settings:\n" + textwrap.indent(settings or "{}\n", "        ")
     (home / "config.yaml").write_text(
@@ -302,3 +333,22 @@ def test_hermes_loads_pep_ref_applies_its_settings_and_autocompletes(tmp_path: P
     items = out["complete"]["items"]
     assert [i["text"] for i in items] == ["@pep:570", "@pep:572"]
     assert items[1]["display"] == "PEP 572 — Assignment Expressions" and items[1]["meta"] == "Final"
+
+
+# -- rfc-ref -------------------------------------------------------------------------------------
+
+def test_hermes_loads_rfc_ref_next_to_pep_ref_and_applies_its_settings(tmp_path: Path):
+    home, work = _dirs(tmp_path)
+    _write_home(home, {"rfc-ref": "timeout_seconds: 7\n", "pep-ref": ""})
+    out = _probe(RFC_PROBE, home, work)
+
+    assert out["listed"]["enabled"] is True
+    assert out["providers"] == {"pep": "PepReferenceProvider", "rfc": "RfcReferenceProvider"}
+    assert sorted((c["url"], c["timeout"]) for c in out["calls"]) == [
+        ("https://www.rfc-editor.org/rfc/rfc26.json", 7), ("https://www.rfc-editor.org/rfc/rfc9110.json", 7),
+    ]
+    message = out["message"]
+    assert "--- Attached Context ---" in message
+    assert "RFC 9110: HTTP Semantics\nhttps://www.rfc-editor.org/rfc/rfc9110.html" in message
+    assert "@rfc:26: plugin expansion error: the RFC Editor has no RFC 26" in message
+    assert out["complete"]["items"] == []

@@ -1,4 +1,4 @@
-"""Test-only: send a Hermes subprocess's Wikipedia, OSV, GitHub and PEP requests to the local fake server.
+"""Test-only: send a Hermes subprocess's Wikipedia, OSV, GitHub, PEP and RFC requests to the local fake server.
 
 Placed on PYTHONPATH by tests/test_e2e_chat.py. Active only when CONTEXT_REFS_TEST_ORIGIN is
 set; the original host is passed along in the X-Test-Host header.
@@ -9,7 +9,7 @@ import urllib.parse
 import urllib.request
 
 _ORIGIN = os.environ.get("CONTEXT_REFS_TEST_ORIGIN")
-_HOSTS = ("api.osv.dev", "api.github.com", "peps.python.org")
+_HOSTS = ("api.osv.dev", "api.github.com", "peps.python.org", "www.rfc-editor.org")
 
 if _ORIGIN:
     _real_open = urllib.request.OpenerDirector.open

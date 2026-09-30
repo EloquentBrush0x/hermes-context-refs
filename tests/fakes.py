@@ -1,4 +1,4 @@
-"""Local stand-ins for the model endpoint and the Wikipedia, OSV, GitHub and PEP sites, used by the end-to-end tests."""
+"""Local stand-ins for the model endpoint and the Wikipedia, OSV, GitHub, PEP and RFC sites (end-to-end tests)."""
 
 from __future__ import annotations
 
@@ -127,8 +127,19 @@ def _pep_answer(path: str) -> tuple[int, str, bytes]:
     return 404, "text/html; charset=utf-8", b"<html>Page not found</html>"
 
 
+# www.rfc-editor.org: the real RFC 9110 record from tests/fixtures.
+RFC_RECORDS = {9110: (_FIXTURES / "rfc" / "rfc9110.json").read_bytes()}
+
+
+def _rfc_answer(path: str) -> tuple[int, str, bytes]:
+    match = re.fullmatch(r"/rfc/rfc(\d+)\.json", path)
+    if match and int(match.group(1)) in RFC_RECORDS:
+        return 200, "application/json;charset=utf-8", RFC_RECORDS[int(match.group(1))]
+    return 404, "text/plain;charset=utf-8", b"404 - Not found"
+
+
 class FakeServer:
-    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php``, OSV, GitHub and peps.python.org."""
+    """One HTTP server playing the model API, ``/w/api.php``, OSV, GitHub, peps.python.org and the RFC Editor."""
 
     def __init__(self) -> None:
         self.chat_requests: list[dict[str, Any]] = []
@@ -136,6 +147,7 @@ class FakeServer:
         self.osv_requests: list[dict[str, Any]] = []
         self.github_requests: list[dict[str, Any]] = []
         self.pep_requests: list[dict[str, Any]] = []
+        self.rfc_requests: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -203,6 +215,11 @@ class FakeServer:
                     with server._lock:
                         server.pep_requests.append({"path": url.path, "user_agent": self.headers.get("User-Agent", "")})
                     self._raw(*_pep_answer(url.path))
+                    return
+                if self.headers.get("X-Test-Host") == "www.rfc-editor.org":
+                    with server._lock:
+                        server.rfc_requests.append({"path": url.path, "user_agent": self.headers.get("User-Agent", "")})
+                    self._raw(*_rfc_answer(url.path))
                     return
                 if self.headers.get("X-Test-Host") == "api.github.com":
                     with server._lock:

@@ -1,0 +1,20 @@
+name: rfc-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @rfc:<number> context references: attach an IETF RFC's record from the RFC Editor (title,
+  status, date, authors, abstract, what it obsoletes and updates and what obsoletes or updates
+  it, errata link) to a message. Disclosure — HTTPS GET to www.rfc-editor.org only (the
+  referenced RFC number leaves the machine); no API key, no files written, no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, ietf, rfc]
+config_schema:
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference may wait for the RFC Editor (1 to 30).

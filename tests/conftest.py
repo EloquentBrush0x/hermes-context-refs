@@ -13,6 +13,7 @@ WIKI_DIR = REPO_ROOT / "wiki-ref"
 OSV_DIR = REPO_ROOT / "osv-ref"
 GH_DIR = REPO_ROOT / "gh-ref"
 PEP_DIR = REPO_ROOT / "pep-ref"
+RFC_DIR = REPO_ROOT / "rfc-ref"
 TESTS_DIR = Path(__file__).resolve().parent
 FIXTURES = TESTS_DIR / "fixtures"
 
@@ -52,6 +53,11 @@ def gh():
 @pytest.fixture
 def pep():
     return load_plugin_module(PEP_DIR)
+
+
+@pytest.fixture
+def rfc():
+    return load_plugin_module(RFC_DIR)
 
 
 @pytest.fixture(autouse=True)

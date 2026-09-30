@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, PEP_DIR, TESTS_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, TESTS_DIR, WIKI_DIR
 from fakes import MODEL_ID, REPLY, FakeServer
 
 _SCRUBBED_ENV_PREFIXES = ("OPENAI", "ANTHROPIC", "OPENROUTER", "GIT_", "HERMES_")
@@ -205,3 +205,37 @@ def test_an_unknown_pep_reaches_the_model_as_a_warning(tmp_path: Path):
         [first_turn, *_] = [m for m in fake.user_messages() if "@pep:9999" in m]
         assert "--- Context Warnings ---" in first_turn, first_turn
         assert "no PEP 9999 on peps.python.org" in first_turn, first_turn
+
+
+def test_a_chat_turn_sends_the_rfc_record_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(RFC_DIR,))
+        proc = _chat(home, work, fake.origin, "Is @rfc:RFC9110 current? One line.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert REPLY in proc.stdout, detail
+        assert [r["path"] for r in fake.rfc_requests] == ["/rfc/rfc9110.json"], fake.rfc_requests
+        assert {r["user_agent"].split(" ")[0] for r in fake.rfc_requests} == {"hermes-rfc-ref/1.0.0"}
+        [first_turn, *_] = [m for m in fake.user_messages() if "@rfc:RFC9110" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "RFC 9110: HTTP Semantics\nhttps://www.rfc-editor.org/rfc/rfc9110.html" in first_turn
+        assert "Obsoletes: RFC 2818, RFC 7230" in first_turn
+        assert "Abstract:\nThe Hypertext Transfer Protocol (HTTP) is a stateless" in first_turn
+
+
+def test_an_unissued_rfc_reaches_the_model_as_a_warning(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(RFC_DIR,))
+        proc = _chat(home, work, fake.origin, "Summarize @rfc:26 please.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert [r["path"] for r in fake.rfc_requests] == ["/rfc/rfc26.json"], fake.rfc_requests
+        [first_turn, *_] = [m for m in fake.user_messages() if "@rfc:26" in m]
+        assert "--- Context Warnings ---" in first_turn, first_turn
+        assert "the RFC Editor has no RFC 26" in first_turn, first_turn
