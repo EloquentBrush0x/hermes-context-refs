@@ -63,6 +63,25 @@ def test_a_chat_turn_sends_the_article_to_the_model(tmp_path: Path):
         assert "Alan Mathison Turing was an English mathematician and computer scientist." in first_turn
 
 
+def test_a_chat_turn_sends_one_section_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin)
+        proc = _chat(home, work, fake.origin, "Summarize @wiki:Berlin#History in one line.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        [lookup] = fake.wiki_requests
+        assert lookup["params"]["titles"] == "Berlin" and lookup["params"]["exsectionformat"] == "wiki", lookup
+        assert "exintro" not in lookup["params"], lookup
+        [first_turn, *_] = [m for m in fake.user_messages() if "@wiki:Berlin#History" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "https://en.wikipedia.org/wiki/Berlin#History\nSection: History" in first_turn, first_turn
+        assert "formerly settled by Slavs" in first_turn, first_turn
+        assert "marshy woodlands" not in first_turn, first_turn
+
+
 def test_a_missing_article_reaches_the_model_as_a_warning(tmp_path: Path):
     home, work = tmp_path / "home", tmp_path / "work"
     work.mkdir()

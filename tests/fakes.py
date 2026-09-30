@@ -20,6 +20,20 @@ ARTICLES: dict[tuple[str, str], dict[str, Any]] = {
         "fullurl": "https://en.wikipedia.org/wiki/Alan_Turing",
         "extract": "Alan Mathison Turing was an English mathematician and computer scientist.",
     },
+    ("en", "Berlin"): {
+        "pageid": 3354, "ns": 0, "title": "Berlin",
+        "description": "Capital and largest city of Germany",
+        "fullurl": "https://en.wikipedia.org/wiki/Berlin",
+        "extract": "Berlin is the capital and largest city of Germany.",
+        # Served as "extract" when a request asks for the whole article (no exintro).
+        "full_extract": (
+            "Berlin is the capital and largest city of Germany.\n\n\n"
+            "== History ==\n\n\n=== Etymology ===\n"
+            "Berlin lies in northeastern Germany, in an area formerly settled by Slavs.\n\n\n"
+            "== Geography ==\n\n\n=== Topography ===\n\n"
+            "Berlin is in northeastern Germany, in an area of low-lying marshy woodlands."
+        ),
+    },
     ("de", "Berlin"): {
         "pageid": 2552494, "ns": 0, "title": "Berlin",
         "description": "Hauptstadt der Bundesrepublik Deutschland",
@@ -82,11 +96,12 @@ def _github_answer(path: str) -> tuple[int, Any]:
     return 404, {"message": "Not Found", "status": "404"}
 
 
-def _query_answer(language: str, title: str) -> dict[str, Any]:
+def _query_answer(language: str, title: str, whole_article: bool) -> dict[str, Any]:
     normalized = " ".join(title.replace("_", " ").split())
-    page = ARTICLES.get((language, normalized))
-    if page is None:
-        page = {"ns": 0, "title": normalized, "missing": True}
+    page = dict(ARTICLES.get((language, normalized)) or {"ns": 0, "title": normalized, "missing": True})
+    full = page.pop("full_extract", None)
+    if whole_article and full:
+        page["extract"] = full
     return {"batchcomplete": True, "query": {"pages": [page]}}
 
 
@@ -162,7 +177,7 @@ class FakeServer:
                     if params.get("action") == "opensearch":
                         self._json(200, _opensearch_answer(language, params.get("search", "")))
                     else:
-                        self._json(200, _query_answer(language, params.get("titles", "")))
+                        self._json(200, _query_answer(language, params.get("titles", ""), "exintro" not in params))
                     return
                 if self.headers.get("X-Test-Host") == "api.github.com":
                     with server._lock:

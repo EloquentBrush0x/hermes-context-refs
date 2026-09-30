@@ -27,6 +27,29 @@ TURING = {
     "extract": "Alan Mathison Turing was an English mathematician and computer scientist.",
 }
 
+# A full extract (exsectionformat=wiki) trimmed from the real en.wikipedia.org answer for "Berlin",
+# 2026-09-30: same heading lines and blank-line runs, one sentence per section.
+BERLIN = {
+    "pageid": 3354, "ns": 0, "title": "Berlin",
+    "description": "Capital and largest city of Germany",
+    "fullurl": "https://en.wikipedia.org/wiki/Berlin",
+    "extract": (
+        "Berlin is the capital and largest city of Germany.\n\n\n"
+        "== History ==\n\n\n"
+        "=== Etymology ===\n"
+        "Berlin lies in northeastern Germany, in an area formerly settled by Slavs.\n\n\n"
+        "=== 1900–1945 ===\n"
+        "In the early 20th century, Berlin had become a fertile ground for the German Expressionist movement.\n\n\n"
+        "== Geography ==\n\n\n"
+        "=== Topography ===\n\n"
+        "Berlin is in northeastern Germany, in an area of low-lying marshy woodlands.\n\n\n"
+        "== References ==\n\n\n"
+        "=== Notes ===\n\n\n"
+        "== External links ==\n"
+        "berlin.de – official website"
+    ),
+}
+
 
 def answer(page):
     return lambda url, params, timeout: {"query": {"pages": [page]}}
@@ -70,7 +93,27 @@ def test_format_value_round_trips_through_hermes_parser(wiki, title):
 def test_parse_target_reads_underscores_and_splits_section(wiki):
     assert wiki.parse_target("Alan_Turing") == ("Alan Turing", "")
     assert wiki.parse_target("  Alan__Turing ") == ("Alan Turing", "")
-    assert wiki.parse_target("Alan_Turing#Early_life") == ("Alan Turing", "Early_life")
+    assert wiki.parse_target("Alan_Turing#Early_life") == ("Alan Turing", "Early life")
+    assert wiki.parse_target("Berlin#") == ("Berlin", "")
+
+
+@pytest.mark.parametrize("message, section", [
+    ("@wiki:Berlin#History", "History"),
+    ("see @wiki:New_York_City#Early_history.", "Early history"),
+    ('@wiki:"New York City#Early history"', "Early history"),
+    ("(see @wiki:Berlin#1900–1945)", "1900–1945"),
+])
+def test_sections_survive_hermes_parser(wiki, message, section):
+    register_context_reference_provider(wiki.WikiReferenceProvider())
+    [ref] = parse_context_references(message)
+    assert wiki.parse_target(ref.target)[1] == section
+
+
+def test_a_section_after_a_quoted_title_is_lost_by_hermes_parser(wiki):
+    """Hermes ends a quoted value at the closing quote, so the README says to quote title and section together."""
+    register_context_reference_provider(wiki.WikiReferenceProvider())
+    [ref] = parse_context_references('@wiki:"New York City"#History')
+    assert wiki.parse_target(ref.target) == ("New York City", "")
 
 
 @pytest.mark.parametrize("target", ["", "   ", "#History", "__"])
@@ -140,12 +183,102 @@ def test_expand_rejects_an_answer_without_pages(wiki, data):
         run(provider.expand("Alan Turing"))
 
 
-def test_expand_notes_redirects_disambiguation_and_sections(wiki):
+def test_expand_notes_redirects_and_disambiguation(wiki):
     page = {**TURING, "title": "Mercury", "pageprops": {"disambiguation": ""}}
-    text = run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page))).expand("mercury#Planet"))
+    text = run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page))).expand("mercury"))
     assert "(resolved from 'mercury')" in text
     assert "disambiguation page" in text
-    assert "not #Planet" in text
+
+
+# -- sections ----------------------------------------------------------------------------------
+
+def test_a_section_asks_for_the_full_text_and_attaches_only_that_section(wiki):
+    transport = RecordingTransport(answer(BERLIN))
+    text = run(wiki.WikiReferenceProvider(transport=transport).expand("Berlin#History"))
+
+    [(_url, params, _timeout)] = transport.calls
+    assert "exintro" not in params and params["exsectionformat"] == "wiki"
+    assert params["titles"] == "Berlin"  # the section name is not sent
+    assert "History" not in "".join(params.values())
+    assert text.splitlines()[:3] == [
+        "Wikipedia (en): Berlin — Capital and largest city of Germany",
+        "https://en.wikipedia.org/wiki/Berlin#History",
+        "Section: History",
+    ]
+    # Subsections come along; the lead and the next top-level section do not.
+    assert "=== Etymology ===\nBerlin lies in northeastern Germany" in text
+    assert "German Expressionist movement." in text
+    assert "capital and largest city" not in text.split("\n\n", 1)[1]
+    assert "Topography" not in text and "marshy woodlands" not in text
+    assert "\n\n\n" not in text
+
+
+def test_a_subsection_carries_its_parent_path_and_stops_at_the_next_heading(wiki):
+    text = run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(BERLIN))).expand("Berlin#1900–1945"))
+    assert "https://en.wikipedia.org/wiki/Berlin#1900%E2%80%931945" in text
+    assert "Section: History › 1900–1945" in text
+    assert "German Expressionist movement." in text
+    assert "Slavs" not in text and "Geography" not in text
+
+
+@pytest.mark.parametrize("target", ["Berlin#history", "Berlin#HISTORY", "Berlin#external_links"])
+def test_section_names_ignore_case_and_underscores(wiki, target):
+    text = run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(BERLIN))).expand(target))
+    assert text.splitlines()[2] in ("Section: History", "Section: External links")
+
+
+def test_an_exact_heading_wins_over_a_case_insensitive_one(wiki):
+    page = {**BERLIN, "extract": "Lead.\n\n\n== Uses ==\nfirst\n\n\n== USES ==\nsecond"}
+    provider = wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page)))
+    exact = run(provider.expand("Berlin#USES"))
+    assert "second" in exact and "first" not in exact
+    assert "first" in run(provider.expand("Berlin#uses"))  # no exact match: the first case-insensitive one
+
+
+def test_an_empty_section_part_attaches_the_lead(wiki):
+    transport = RecordingTransport(answer(TURING))
+    text = run(wiki.WikiReferenceProvider(transport=transport).expand("Alan_Turing#"))
+    assert transport.calls[0][1]["exintro"] == "1"
+    assert "Section:" not in text and TURING["extract"] in text
+
+
+@pytest.mark.parametrize("target, message", [
+    ("Berlin#Histroy", "no section 'Histroy' in 'Berlin' on en.wikipedia.org; did you mean 'History'? "
+                       "Sections: History, Geography, References, External links"),
+    ("Berlin#Topo", "did you mean 'Topography'?"),  # a heading that starts with what was typed
+    ("Berlin#links", "did you mean 'External links'?"),  # then one that contains it
+    ("Berlin#Zzqx", "no section 'Zzqx' in 'Berlin' on en.wikipedia.org. Sections: History,"),
+])
+def test_an_unknown_section_names_the_closest_heading_and_the_sections(wiki, target, message):
+    provider = wiki.WikiReferenceProvider(transport=RecordingTransport(answer(BERLIN)))
+    with pytest.raises(wiki.WikiRefError, match=re.escape(message)):
+        run(provider.expand(target))
+
+
+def test_a_long_section_list_is_shortened_in_the_error(wiki):
+    names = [f"Part {n}" for n in range(1, wiki.SECTIONS_LISTED_IN_ERRORS + 4)]
+    page = {**BERLIN, "extract": "Lead." + "".join(f"\n\n\n== {name} ==\ntext" for name in names)}
+    provider = wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page)))
+    with pytest.raises(wiki.WikiRefError, match=re.escape(f"Part {wiki.SECTIONS_LISTED_IN_ERRORS}, … (3 more)")):
+        run(provider.expand("Berlin#Zzqx"))
+
+
+@pytest.mark.parametrize("page, target, message", [
+    ({**TURING, "extract": "A stub with no headings."}, "Alan_Turing#History",
+     "'Alan Turing' on en.wikipedia.org has no sections; write @wiki:Alan_Turing for its lead section"),
+    (BERLIN, "Berlin#Notes", "section 'Notes' of 'Berlin' has no text in Wikipedia's plain-text extract"),
+    (BERLIN, "Berlin#References", "section 'References' of 'Berlin' has no text"),  # only an empty subsection
+])
+def test_sections_without_text_are_reported(wiki, page, target, message):
+    with pytest.raises(wiki.WikiRefError, match=re.escape(message)):
+        run(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(page))).expand(target))
+
+
+def test_a_section_is_truncated_with_its_own_note(wiki):
+    page = {**BERLIN, "extract": "Lead.\n\n\n== History ==\n" + "word " * 200}
+    provider = wiki.WikiReferenceProvider(get_config=config(max_chars=200), transport=RecordingTransport(answer(page)))
+    text = run(provider.expand("Berlin#History"))
+    assert "(section truncated to 200 characters)" in text and "(lead section" not in text
 
 
 # Openings of real English Wikipedia extracts (TextExtracts, explaintext=1), 2026-09-29.
@@ -283,6 +416,17 @@ def test_hermes_attaches_the_article_and_reports_failures(wiki, tmp_path: Path):
     assert "plugin expansion error: no en.wikipedia.org article titled 'Zzqx'" in result.message
 
 
+def test_hermes_attaches_a_section_and_reports_an_unknown_one(wiki, tmp_path: Path):
+    register_context_reference_provider(wiki.WikiReferenceProvider(transport=RecordingTransport(answer(BERLIN))))
+    result = run(preprocess_context_references_async(
+        "Compare @wiki:Berlin#Geography with @wiki:Berlin#Histroy.", cwd=tmp_path, context_length=100_000,
+    ))
+    assert "Section: Geography" in result.message
+    assert "marshy woodlands" in result.message
+    assert "@wiki:Berlin#Histroy.: plugin expansion error: no section 'Histroy'" in result.message
+    assert "did you mean 'History'?" in result.message
+
+
 def test_a_hung_request_does_not_hold_hermes_sync_expander(wiki, tmp_path: Path):
     """The CLI and TUI expand through the sync wrapper, which runs asyncio.run() and joins the
     loop's default executor on exit; the request must not be parked there."""
@@ -325,8 +469,10 @@ def test_autocomplete_suggests_values_that_parse_back(wiki):
         assert wiki.parse_target(ref.target)[0] == title
 
 
-@pytest.mark.parametrize("query", ["", "  ", '"'])
-def test_autocomplete_skips_empty_queries_without_a_request(wiki, query):
+@pytest.mark.parametrize("query", ["", "  ", '"', "Berlin#", "Berlin#Hi", '"New York City#Ea'])
+def test_autocomplete_skips_empty_queries_and_sections_without_a_request(wiki, query):
+    """After "#" the user types a section; Wikipedia would still suggest titles ("Berlin#Hi" gives
+    "Berlin High School"), and picking one would replace the section."""
     transport = RecordingTransport(lambda *a: ["", [], [], []])
     assert run(wiki.WikiReferenceProvider(transport=transport).autocomplete(query)) == []
     assert transport.calls == []

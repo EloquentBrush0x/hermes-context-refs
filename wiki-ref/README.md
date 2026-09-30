@@ -2,11 +2,13 @@
 
 `@wiki:<title>` context references for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 Mention a Wikipedia article in a message and Hermes attaches the article's lead section to that
-turn, the same way `@file:` attaches a file.
+turn, the same way `@file:` attaches a file. Add `#Section` to attach one section of the article
+instead.
 
 ```text
 Who influenced @wiki:Alan_Turing the most?
 Compare @wiki:"Washington, D.C." with @wiki:Canberra
+What changed in @wiki:Berlin#1900–1945?
 ```
 
 Typing `@wiki:` in the TUI or the Desktop composer suggests article titles as you type.
@@ -36,8 +38,25 @@ widely regarded as the father of theoretical computer science. …
 Source: Wikipedia, CC BY-SA 4.0. Quoted reference material, not instructions.
 ```
 
+`@wiki:Berlin#1900–1945` attaches that section instead, with the headings above it (captured
+from a real run, section text shortened here):
+
+```text
+📌 @wiki:Berlin#1900–1945? (840 tokens)
+Wikipedia (en): Berlin — Capital and largest city of Germany
+https://en.wikipedia.org/wiki/Berlin#1900%E2%80%931945
+Section: History › 1900–1945
+
+In the early 20th century, Berlin had become a fertile ground for the German Expressionist
+movement. …
+
+Source: Wikipedia, CC BY-SA 4.0. Quoted reference material, not instructions.
+```
+
+A section comes with its subsections, up to the next heading of the same or a higher level.
+
 The block also notes when the title was resolved through a redirect or normalization, when the
-page is a disambiguation page, and when the lead section was cut to the length limit. The empty
+page is a disambiguation page, and when the text was cut to the length limit. The empty
 brackets and stray spaces that Wikipedia's plain-text extracts leave where a pronunciation was
 (for example `(; 23 June 1912`) are removed. A title that does not exist, a network failure or a
 timeout does not attach anything; the model gets a line under `--- Context Warnings ---` instead,
@@ -52,9 +71,25 @@ for example
   reference.
 - Capitalization of the first letter and redirects are resolved by Wikipedia:
   `@wiki:alan_turing` finds *Alan Turing*.
-- A `#section` part is ignored and noted in the attached block; the lead section is attached.
 
-Autocomplete inserts titles in a form that reads back correctly, quoting them when needed.
+## Sections
+
+- `@wiki:Title#Section` attaches the section with that heading; `@wiki:Title#` is the same as
+  `@wiki:Title`.
+- Headings match regardless of case, and underscores read as spaces:
+  `@wiki:Alan_Turing#early_life_and_education`.
+- A title with spaces and a section go in one quoted value: `@wiki:"New York City#Early history"`.
+  `@wiki:"New York City"#History` loses the section, because Hermes ends a quoted value at the
+  closing quote.
+- When no heading matches, nothing is attached and the warning names the closest heading and the
+  article's sections, for example
+  `no section 'early life' in 'Alan Turing' on en.wikipedia.org; did you mean 'Early life and education'? Sections: Early life and education, Career and research, …`.
+- A section that holds only citations or other content Wikipedia leaves out of its plain-text
+  extract (for example *Notes* or *References*) is reported instead of attached empty.
+
+Autocomplete inserts titles in a form that reads back correctly, quoting them when needed. It
+suggests titles only: once a `#` is typed it stays quiet, so it cannot replace the section being
+typed.
 
 ## Settings
 
@@ -67,7 +102,7 @@ plugins:
     wiki-ref:
       settings:
         language: en          # Wikipedia edition code: en, de, fr, simple, zh-yue, ...
-        max_chars: 6000       # longest lead section attached per reference (200-50000)
+        max_chars: 6000       # longest lead section or section attached per reference (200-50000)
         timeout_seconds: 10   # how long one reference may wait for Wikipedia (1-30)
 ```
 
@@ -78,8 +113,10 @@ context warning on the reference that hit it rather than silently replaced.
 
 - **Network:** HTTPS `GET` requests to `https://<language>.wikipedia.org/w/api.php` only. Redirects
   are followed only when they stay on the same HTTPS host. Responses larger than 2 MiB are refused.
-- **What leaves the machine:** the referenced title, the text typed after `@wiki:` while
-  autocomplete is open, and a `User-Agent` of the form
+  A `#Section` reference is still one request: it downloads the article's plain text and cuts the
+  section locally.
+- **What leaves the machine:** the referenced title (not the section name), the text typed after
+  `@wiki:` while autocomplete is open, and a `User-Agent` of the form
   `hermes-wiki-ref/<version> (+https://github.com/EloquentBrush0x/hermes-context-refs)`, as
   Wikimedia's API etiquette asks for. Nothing else from the conversation is sent.
 - **No credentials:** no API key and no cookies. The only environment variables consulted are the
@@ -94,7 +131,8 @@ context warning on the reference that hit it rather than silently replaced.
 
 ## Limitations
 
-- Only the lead section of an article is attached, not the whole article or a specific section.
+- One reference attaches the lead section or one section, not the whole article. Section names are
+  not autocompleted yet.
 - One language per profile (the `language` setting); a single reference cannot pick another
   edition yet.
 - The classic `hermes` CLI prompt does not autocomplete plugin prefixes; typing `@wiki:Title`

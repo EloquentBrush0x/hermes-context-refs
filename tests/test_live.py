@@ -37,6 +37,26 @@ def test_live_missing_article(wiki):
         run(wiki.WikiReferenceProvider().expand("Zzqx_no_such_article_for_wiki_ref"))
 
 
+def test_live_section_and_unknown_section(wiki):
+    lines = run(wiki.WikiReferenceProvider().expand("Berlin#History")).splitlines()
+    assert lines[1:3] == ["https://en.wikipedia.org/wiki/Berlin#History", "Section: History"]
+    assert any(line.startswith("=== ") for line in lines)  # its subsections come along
+    with pytest.raises(wiki.WikiRefError, match="did you mean 'History'"):
+        run(wiki.WikiReferenceProvider().expand("Berlin#Histroy"))
+
+
+@pytest.mark.parametrize("title", ["Berlin", "Alan Turing", "Python (programming language)"])
+def test_live_extract_headings_have_the_expected_shape(wiki, title):
+    """Section cutting relies on TextExtracts marking every heading as its own "== Name ==" line."""
+    data = wiki.http_get_json(wiki.api_url("en"), {
+        "action": "query", "format": "json", "formatversion": "2", "prop": "extracts",
+        "explaintext": "1", "exsectionformat": "wiki", "titles": title,
+    }, 10)
+    extract = data["query"]["pages"][0]["extract"]
+    marked = [line for line in extract.splitlines() if line.startswith("==")]
+    assert marked and all(wiki._HEADING_RE.fullmatch(line) for line in marked), marked
+
+
 def test_live_autocomplete(wiki):
     items = run(wiki.WikiReferenceProvider().autocomplete("Alan Tur"))
     assert "Alan Turing" in [item.display for item in items]

@@ -6,7 +6,7 @@ Each plugin lives in its own directory and is installed on its own.
 
 | Plugin | Reference | Source |
 |---|---|---|
-| [wiki-ref](wiki-ref/) | `@wiki:<title>`: lead section of a Wikipedia article | Wikipedia API, no key |
+| [wiki-ref](wiki-ref/) | `@wiki:<title>`: lead section of a Wikipedia article; `@wiki:<title>#<section>`: one section | Wikipedia API, no key |
 | [osv-ref](osv-ref/) | `@cve:<id>`, `@ghsa:<id>`, `@osv:<id>`: a vulnerability record with affected packages and fixed versions | OSV.dev API, no key |
 | [gh-ref](gh-ref/) | `@gh:owner/repo#123`: a GitHub issue or pull request with its latest comments | GitHub REST API, anonymous |
 
