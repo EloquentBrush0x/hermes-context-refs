@@ -1,15 +1,18 @@
-"""Local stand-ins for the model endpoint and the Wikipedia, OSV and GitHub APIs, used by the end-to-end tests."""
+"""Local stand-ins for the model endpoint and the Wikipedia, OSV, GitHub and PEP sites, used by the end-to-end tests."""
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 MODEL_ID = "fake-model"
+_FIXTURES = Path(__file__).resolve().parent / "fixtures"
 REPLY = "Noted."
 
 # Canned ``action=query`` pages keyed by (language, normalized title).
@@ -110,14 +113,29 @@ def _opensearch_answer(language: str, search: str) -> list[Any]:
     return [search, titles, ["" for _ in titles], [ARTICLES[(language, t)]["fullurl"] for t in titles]]
 
 
+# peps.python.org: the trimmed real index and PEP 572 page from tests/fixtures.
+PEP_INDEX = (_FIXTURES / "peps-index.json").read_bytes()
+PEP_PAGES = {572: (_FIXTURES / "pep-0572.html").read_bytes()}
+
+
+def _pep_answer(path: str) -> tuple[int, str, bytes]:
+    if path == "/api/peps.json":
+        return 200, "application/json", PEP_INDEX
+    match = re.fullmatch(r"/pep-(\d{4})/", path)
+    if match and int(match.group(1)) in PEP_PAGES:
+        return 200, "text/html; charset=utf-8", PEP_PAGES[int(match.group(1))]
+    return 404, "text/html; charset=utf-8", b"<html>Page not found</html>"
+
+
 class FakeServer:
-    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php``, OSV and GitHub."""
+    """One HTTP server playing the OpenAI-compatible model API, ``/w/api.php``, OSV, GitHub and peps.python.org."""
 
     def __init__(self) -> None:
         self.chat_requests: list[dict[str, Any]] = []
         self.wiki_requests: list[dict[str, Any]] = []
         self.osv_requests: list[dict[str, Any]] = []
         self.github_requests: list[dict[str, Any]] = []
+        self.pep_requests: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -157,9 +175,11 @@ class FakeServer:
                 pass
 
             def _json(self, status: int, payload: Any) -> None:
-                body = json.dumps(payload).encode()
+                self._raw(status, "application/json", json.dumps(payload).encode())
+
+            def _raw(self, status: int, content_type: str, body: bytes) -> None:
                 self.send_response(status)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -178,6 +198,11 @@ class FakeServer:
                         self._json(200, _opensearch_answer(language, params.get("search", "")))
                     else:
                         self._json(200, _query_answer(language, params.get("titles", ""), "exintro" not in params))
+                    return
+                if self.headers.get("X-Test-Host") == "peps.python.org":
+                    with server._lock:
+                        server.pep_requests.append({"path": url.path, "user_agent": self.headers.get("User-Agent", "")})
+                    self._raw(*_pep_answer(url.path))
                     return
                 if self.headers.get("X-Test-Host") == "api.github.com":
                     with server._lock:

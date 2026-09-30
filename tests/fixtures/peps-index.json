@@ -1,0 +1,234 @@
+{
+ "0": {
+  "number": 0,
+  "title": "Index of Python Enhancement Proposals (PEPs)",
+  "authors": "The PEP Editors",
+  "discussions_to": null,
+  "status": "Active",
+  "type": "Informational",
+  "topic": "",
+  "created": "13-Jul-2000",
+  "python_version": null,
+  "post_history": null,
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "The PEP Editors"
+  ],
+  "url": "https://peps.python.org/pep-0000/"
+ },
+ "8": {
+  "number": 8,
+  "title": "Style Guide for Python Code",
+  "authors": "Guido van Rossum, Barry Warsaw, Alyssa Coghlan",
+  "discussions_to": null,
+  "status": "Active",
+  "type": "Process",
+  "topic": "",
+  "created": "05-Jul-2001",
+  "python_version": null,
+  "post_history": "05-Jul-2001, 01-Aug-2013",
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Guido van Rossum",
+   "Barry Warsaw",
+   "Alyssa Coghlan"
+  ],
+  "url": "https://peps.python.org/pep-0008/"
+ },
+ "20": {
+  "number": 20,
+  "title": "The Zen of Python",
+  "authors": "Tim Peters",
+  "discussions_to": null,
+  "status": "Active",
+  "type": "Informational",
+  "topic": "",
+  "created": "19-Aug-2004",
+  "python_version": null,
+  "post_history": "22-Aug-2004",
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Tim Peters"
+  ],
+  "url": "https://peps.python.org/pep-0020/"
+ },
+ "379": {
+  "number": 379,
+  "title": "Adding an Assignment Expression",
+  "authors": "Jervis Whitley",
+  "discussions_to": null,
+  "status": "Withdrawn",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "14-Mar-2009",
+  "python_version": "2.7, 3.2",
+  "post_history": null,
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Jervis Whitley"
+  ],
+  "url": "https://peps.python.org/pep-0379/"
+ },
+ "570": {
+  "number": 570,
+  "title": "Python Positional-Only Parameters",
+  "authors": "Larry Hastings, Pablo Galindo Salgado, Mario Corchero, Eric N. Vander Weele",
+  "discussions_to": "https://discuss.python.org/t/pep-570-python-positional-only-parameters/1078",
+  "status": "Final",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "20-Jan-2018",
+  "python_version": "3.8",
+  "post_history": null,
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Larry Hastings",
+   "Pablo Galindo Salgado",
+   "Mario Corchero",
+   "Eric N. Vander Weele"
+  ],
+  "url": "https://peps.python.org/pep-0570/"
+ },
+ "571": {
+  "number": 571,
+  "title": "The manylinux2010 Platform Tag",
+  "authors": "Mark  Williams, Geoffrey Thomas, Thomas Kluyver",
+  "discussions_to": "distutils-sig@python.org",
+  "status": "Superseded",
+  "type": "Informational",
+  "topic": "packaging",
+  "created": "05-Feb-2018",
+  "python_version": null,
+  "post_history": null,
+  "resolution": "https://mail.python.org/pipermail/distutils-sig/2018-April/032156.html",
+  "requires": null,
+  "replaces": null,
+  "superseded_by": "600",
+  "author_names": [
+   "Mark  Williams",
+   "Geoffrey Thomas",
+   "Thomas Kluyver"
+  ],
+  "url": "https://peps.python.org/pep-0571/"
+ },
+ "572": {
+  "number": 572,
+  "title": "Assignment Expressions",
+  "authors": "Chris Angelico, Tim Peters, Guido van Rossum",
+  "discussions_to": null,
+  "status": "Final",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "28-Feb-2018",
+  "python_version": "3.8",
+  "post_history": "28-Feb-2018, 02-Mar-2018, 23-Mar-2018, 04-Apr-2018, 17-Apr-2018, 25-Apr-2018, 09-Jul-2018, 05-Aug-2019",
+  "resolution": "https://mail.python.org/pipermail/python-dev/2018-July/154601.html",
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Chris Angelico",
+   "Tim Peters",
+   "Guido van Rossum"
+  ],
+  "url": "https://peps.python.org/pep-0572/"
+ },
+ "573": {
+  "number": 573,
+  "title": "Module State Access from C Extension Methods",
+  "authors": "Petr Viktorin, Alyssa Coghlan, Eric Snow, Marcel Plch",
+  "discussions_to": "import-sig@python.org",
+  "status": "Final",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "02-Jun-2016",
+  "python_version": "3.9",
+  "post_history": null,
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Petr Viktorin",
+   "Alyssa Coghlan",
+   "Eric Snow",
+   "Marcel Plch"
+  ],
+  "url": "https://peps.python.org/pep-0573/"
+ },
+ "577": {
+  "number": 577,
+  "title": "Augmented Assignment Expressions",
+  "authors": "Alyssa Coghlan",
+  "discussions_to": null,
+  "status": "Withdrawn",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "14-May-2018",
+  "python_version": "3.8",
+  "post_history": "22-May-2018",
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Alyssa Coghlan"
+  ],
+  "url": "https://peps.python.org/pep-0577/"
+ },
+ "802": {
+  "number": 802,
+  "title": "Display Syntax for the Empty Set",
+  "authors": "Adam Turner",
+  "discussions_to": "https://discuss.python.org/t/101676",
+  "status": "Draft",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "08-Aug-2025",
+  "python_version": "3.15",
+  "post_history": "`08-Aug-2025 <https://discuss.python.org/t/101676>`__,",
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Adam Turner"
+  ],
+  "url": "https://peps.python.org/pep-0802/"
+ },
+ "3103": {
+  "number": 3103,
+  "title": "A Switch/Case Statement",
+  "authors": "Guido van Rossum",
+  "discussions_to": null,
+  "status": "Rejected",
+  "type": "Standards Track",
+  "topic": "",
+  "created": "25-Jun-2006",
+  "python_version": "3.0",
+  "post_history": "26-Jun-2006",
+  "resolution": null,
+  "requires": null,
+  "replaces": null,
+  "superseded_by": null,
+  "author_names": [
+   "Guido van Rossum"
+  ],
+  "url": "https://peps.python.org/pep-3103/"
+ }
+}

@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, TESTS_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, PEP_DIR, TESTS_DIR, WIKI_DIR
 from fakes import MODEL_ID, REPLY, FakeServer
 
 _SCRUBBED_ENV_PREFIXES = ("OPENAI", "ANTHROPIC", "OPENROUTER", "GIT_", "HERMES_")
@@ -171,3 +171,37 @@ def test_an_unknown_issue_reaches_the_model_as_a_warning(tmp_path: Path):
         [first_turn, *_] = [m for m in fake.user_messages() if "@gh:o/r#404" in m]
         assert "--- Context Warnings ---" in first_turn, first_turn
         assert "no issue or pull request o/r#404 is visible without signing in" in first_turn, first_turn
+
+
+def test_a_chat_turn_sends_a_pep_section_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(PEP_DIR,))
+        proc = _chat(home, work, fake.origin, "Apply @pep:572#site.py to my code. One line.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert REPLY in proc.stdout, detail
+        assert [r["path"] for r in fake.pep_requests] == ["/api/peps.json", "/pep-0572/"], fake.pep_requests
+        assert {r["user_agent"].split(" ")[0] for r in fake.pep_requests} == {"hermes-pep-ref/1.0.0"}
+        [first_turn, *_] = [m for m in fake.user_messages() if "@pep:572#site.py" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "PEP 572 — Assignment Expressions\nhttps://peps.python.org/pep-0572/#site-py" in first_turn
+        assert "Section: Examples › Examples from the Python standard library › site.py" in first_turn
+        assert "if env_base := os.environ.get(" in first_turn, first_turn
+
+
+def test_an_unknown_pep_reaches_the_model_as_a_warning(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(PEP_DIR,))
+        proc = _chat(home, work, fake.origin, "What does @pep:9999 say?")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert [r["path"] for r in fake.pep_requests] == ["/api/peps.json"], fake.pep_requests
+        [first_turn, *_] = [m for m in fake.user_messages() if "@pep:9999" in m]
+        assert "--- Context Warnings ---" in first_turn, first_turn
+        assert "no PEP 9999 on peps.python.org" in first_turn, first_turn

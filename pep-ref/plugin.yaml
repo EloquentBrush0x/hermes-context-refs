@@ -1,0 +1,26 @@
+name: pep-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @pep:<number> context references: attach a Python Enhancement Proposal (title, status, type,
+  authors, Python version and its first section, usually the Abstract) to a message, or one
+  section with @pep:<number>#<section>, with PEP number and title autocomplete in the TUI and
+  Desktop composer. Disclosure — HTTPS GET to peps.python.org only (the PEP index and the
+  referenced PEP's page); no API key, no files written, no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, python, pep]
+config_schema:
+  max_chars:
+    type: int
+    default: 6000
+    label: Maximum characters
+    description: Longest section attached per reference (200 to 50000); longer text is cut at a word boundary.
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference, both requests included, may wait for peps.python.org (1 to 30).

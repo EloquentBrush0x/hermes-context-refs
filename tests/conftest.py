@@ -12,7 +12,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 WIKI_DIR = REPO_ROOT / "wiki-ref"
 OSV_DIR = REPO_ROOT / "osv-ref"
 GH_DIR = REPO_ROOT / "gh-ref"
+PEP_DIR = REPO_ROOT / "pep-ref"
 TESTS_DIR = Path(__file__).resolve().parent
+FIXTURES = TESTS_DIR / "fixtures"
 
 if str(TESTS_DIR) not in sys.path:
     sys.path.insert(0, str(TESTS_DIR))
@@ -45,6 +47,11 @@ def osv():
 @pytest.fixture
 def gh():
     return load_plugin_module(GH_DIR)
+
+
+@pytest.fixture
+def pep():
+    return load_plugin_module(PEP_DIR)
 
 
 @pytest.fixture(autouse=True)

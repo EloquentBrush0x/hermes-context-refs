@@ -1,4 +1,4 @@
-"""Against the real Wikipedia, OSV and GitHub APIs. Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it)."""
+"""Against the real Wikipedia, OSV, GitHub and PEP sites. Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,8 @@ import os
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CONTEXT_REFS_LIVE") != "1", reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV and GitHub"
+    os.environ.get("CONTEXT_REFS_LIVE") != "1",
+    reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV, GitHub and peps.python.org",
 )
 
 
@@ -110,3 +111,25 @@ def test_live_github_renamed_repository_pull_request(gh):
 def test_live_github_missing_issue(gh):
     with pytest.raises(gh.GhRefError, match="no issue or pull request NousResearch/hermes-agent#999999999"):
         _gh(gh, "NousResearch/hermes-agent#999999999")
+
+
+def test_live_pep_summary_section_and_autocomplete(pep):
+    provider = pep.PepReferenceProvider()
+    lines = run(provider.expand("pep-0572")).splitlines()
+    assert lines[:2] == ["PEP 572 — Assignment Expressions", "https://peps.python.org/pep-0572/#abstract"]
+    assert "Section: Abstract" in lines and any("`NAME := expr`" in line for line in lines)
+    section = run(provider.expand("8#naming_conventions"))
+    assert "Section: Naming Conventions" in section and "### " in section  # with its subsections
+    with pytest.raises(pep.PepRefError, match="did you mean 'Naming Conventions'"):
+        run(provider.expand("8#Naming"))
+    assert "572" in [item.text for item in run(provider.autocomplete("assignment expressions"))]
+
+
+@pytest.mark.parametrize("number", [8, 20, 484, 572])
+def test_live_pep_pages_have_the_structure_the_parser_relies_on(pep, number):
+    """A #pep-content section holding titled <section> elements; the page header and contents are left out."""
+    status, body = pep.http_get(pep.page_url(number), 15)
+    assert status == 200
+    page = pep.parse_page(body.decode("utf-8"))
+    assert len(page.sections) >= 2 and all(s.id and s.title for s in page.sections)
+    assert page.text.startswith("## ") and "Table of Contents" not in page.text

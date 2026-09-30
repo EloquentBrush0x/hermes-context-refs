@@ -10,7 +10,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, WIKI_DIR
+from conftest import GH_DIR, OSV_DIR, PEP_DIR, WIKI_DIR
 
 WIKI_PROBE = textwrap.dedent('''
     import asyncio, json, os, sys
@@ -116,11 +116,45 @@ GH_PROBE = textwrap.dedent('''
 ''')
 
 
+PEP_PROBE = textwrap.dedent('''
+    import json, os
+    from hermes_cli.plugins import discover_plugins, get_plugin_manager
+    from agent.context_references import get_context_reference_providers, preprocess_context_references
+
+    discover_plugins(force=True)
+    listed = {p["name"]: p for p in get_plugin_manager().list_plugins()}
+    providers = get_context_reference_providers()
+    out = {"listed": listed.get("pep-ref"), "providers": {k: type(p).__name__ for k, p in providers.items()}}
+    calls = []
+    index = {str(n): {"number": n, "title": t, "status": "Final", "type": "Standards Track"}
+             for n, t in ((570, "Positional-Only Parameters"), (572, "Assignment Expressions"), (8, "Style Guide"))}
+    page = ('<main><section id="pep-content"><h1>PEP 572</h1><section id="abstract">'
+            '<h2><a class="toc-backref" href="#abstract">Abstract</a></h2><p>' + "word " * 200 + '</p></section>'
+            '</section></main>')
+    def fake(url, timeout):
+        calls.append({"url": url, "timeout": timeout})
+        if url.endswith("/api/peps.json"):
+            return 200, json.dumps(index).encode()
+        return (200, page.encode()) if url.endswith("/pep-0572/") else (404, b"")
+    if "pep" in providers:
+        providers["pep"]._transport = fake
+    result = preprocess_context_references("Explain @pep:572 briefly", cwd=os.getcwd(), context_length=100000)
+    out["message"] = result.message
+    from tui_gateway import server
+    reply = server.handle_request({"jsonrpc": "2.0", "id": 1, "method": "complete.path",
+                                   "params": {"word": "@pep:57"}})
+    out["complete"] = reply.get("result", reply)
+    out["calls"] = calls
+    with open(os.environ["PROBE_OUT"], "w", encoding="utf-8") as fh:
+        json.dump(out, fh, default=str)
+''')
+
+
 def _write_home(home: Path, plugins: dict[str, str]) -> None:
     """Install each ``{plugin_dir_name: settings_yaml}`` into ``home`` and enable it."""
     entries = ""
     for name, settings in plugins.items():
-        source = {"wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR}[name]
+        source = {"wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR, "pep-ref": PEP_DIR}[name]
         shutil.copytree(source, home / "plugins" / name, ignore=shutil.ignore_patterns("__pycache__"))
         entries += f"    {name}:\n      settings:\n" + textwrap.indent(settings or "{}\n", "        ")
     (home / "config.yaml").write_text(
@@ -244,3 +278,27 @@ def test_hermes_loads_gh_ref_next_to_the_others_and_applies_its_settings(tmp_pat
     assert "Comments (the last 2 of 3, oldest first):\n--- @u1 · 2026-01-01\nc1\n--- @u2 · 2026-01-01\nc2" in message
     assert "@u0" not in message
     assert out["complete"]["items"] == []
+
+
+# -- pep-ref -------------------------------------------------------------------------------------
+
+def test_hermes_loads_pep_ref_applies_its_settings_and_autocompletes(tmp_path: Path):
+    home, work = _dirs(tmp_path)
+    _write_home(home, {"pep-ref": "max_chars: 300\ntimeout_seconds: 7\n", "wiki-ref": ""})
+    out = _probe(PEP_PROBE, home, work)
+
+    assert out["listed"]["enabled"] is True
+    assert out["providers"] == {"wiki": "WikiReferenceProvider", "pep": "PepReferenceProvider"}
+    # The index is read once: for the reference, then again from the cache for autocomplete.
+    assert out["calls"] == [
+        {"url": "https://peps.python.org/api/peps.json", "timeout": 7},
+        {"url": "https://peps.python.org/pep-0572/", "timeout": out["calls"][1]["timeout"]},
+    ]
+    assert 6 < out["calls"][1]["timeout"] <= 7  # what is left of the reference's 7 s
+    message = out["message"]
+    assert "--- Attached Context ---" in message
+    assert "PEP 572 — Assignment Expressions\nhttps://peps.python.org/pep-0572/#abstract" in message
+    assert "(section truncated to 300 characters)" in message
+    items = out["complete"]["items"]
+    assert [i["text"] for i in items] == ["@pep:570", "@pep:572"]
+    assert items[1]["display"] == "PEP 572 — Assignment Expressions" and items[1]["meta"] == "Final"
