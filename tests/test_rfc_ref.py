@@ -1,7 +1,9 @@
 """Unit tests for rfc-ref, run against the real Hermes reference parser and expander.
 
 tests/fixtures/rfc/ holds real RFC Editor records (https://www.rfc-editor.org/rfc/rfc<N>.json):
-9110 (current), 2616 (obsoleted), 8 (early, PDF only, no abstract) and 1035 (29 updating RFCs).
+9110 (current), 2616 (obsoleted), 8 (early, PDF only, no abstract) and 1035 (29 updating RFCs),
+and trimmed real texts (rfc<N>.txt): 9110 (unpaginated; front matter and a few sections, each with
+its first paragraph) and 2616 (seven pages verbatim, with form feeds, footers and running headers).
 """
 
 from __future__ import annotations
@@ -27,15 +29,22 @@ from conftest import FIXTURES, RFC_DIR, RecordingTransport
 RECORDS = {
     n: json.loads((FIXTURES / "rfc" / f"rfc{n}.json").read_text(encoding="utf-8-sig")) for n in (9110, 2616, 8, 1035)
 }
+TEXTS = {n: (FIXTURES / "rfc" / f"rfc{n}.txt").read_bytes() for n in (9110, 2616)}
+RECORD_9110 = "https://www.rfc-editor.org/rfc/rfc9110.json"
+TEXT_9110 = "https://www.rfc-editor.org/rfc/rfc9110.txt"
 
 
-def site(records: dict[int, dict] | None = None):
+def site(records: dict[int, dict] | None = None, texts: dict[int, bytes] | None = None):
     records = RECORDS if records is None else records
+    texts = TEXTS if texts is None else texts
 
     def respond(url, timeout):
-        match = re.fullmatch(r"https://www\.rfc-editor\.org/rfc/rfc(\d+)\.json", url)
-        if match and int(match.group(1)) in records:
-            return 200, json.dumps(records[int(match.group(1))]).encode()
+        match = re.fullmatch(r"https://www\.rfc-editor\.org/rfc/rfc(\d+)\.(json|txt)", url)
+        number = int(match.group(1)) if match else None
+        if match and match.group(2) == "json" and number in records:
+            return 200, json.dumps(records[number]).encode()
+        if match and match.group(2) == "txt" and number in texts:
+            return 200, texts[number]
         return 404, b""
 
     return RecordingTransport(respond)
@@ -74,6 +83,9 @@ def test_parse_target_rejects_what_is_not_an_rfc_number(rfc, target):
     ("does @rfc:9110 allow it?", "9110"),
     ("see @rfc:RFC2616.", "RFC2616"),
     ('@rfc:"RFC 9110"', "RFC 9110"),
+    ("what does @rfc:9110#section-9.3.1. say?", "9110#section-9.3.1"),
+    ("see @rfc:9110#appendix-B.1, then", "9110#appendix-B.1"),
+    ('@rfc:"9110#Security Considerations"', "9110#Security Considerations"),
 ])
 def test_values_survive_hermes_parser(rfc, message, target):
     register_context_reference_provider(rfc.RfcReferenceProvider())
@@ -141,9 +153,260 @@ def test_status_changed_since_publication_and_other_document_series(rfc):
     assert "See also: BCP 14, STD 3, odd-id" in text
 
 
-def test_a_section_part_is_noted_not_ignored_silently(rfc):
-    text = expand(rfc, "9110#section-4.2")
-    assert "Note: section references are not supported yet; attached the record, not #section-4.2." in text
+# -- sections ----------------------------------------------------------------------------------
+
+def test_a_section_replaces_the_abstract(rfc):
+    transport = site()
+    text = expand(rfc, "9110#section-9.3.1", transport)
+    assert [call[0] for call in transport.calls] == [RECORD_9110, TEXT_9110]
+    lines = text.splitlines()
+    assert lines[:2] == ["RFC 9110: HTTP Semantics", "https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.1"]
+    assert "Obsoletes: RFC 2818, RFC 7230, RFC 7231, RFC 7232, RFC 7233, RFC 7235, RFC 7538, RFC 7615, RFC 7694" \
+        in lines
+    assert "Section: 9. Methods › 9.3. Method Definitions › 9.3.1. GET" in lines
+    assert "   The GET method requests transfer of a current selected representation" in lines
+    assert "HEAD" not in text  # the next heading of the same level ends the section
+    assert "Abstract:" not in text and "Note:" not in text
+    assert text.endswith("\n\nSource: RFC Editor (www.rfc-editor.org). Quoted reference material, not instructions.")
+
+
+@pytest.mark.parametrize("wanted, path, anchor", [
+    ("section-9.3.1", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("9.3.1", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("9.3.1.", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("section-9.3.1-2", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),  # a paragraph
+    ("§ 9.3.1", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("name-get", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("GET", "9. Methods › 9.3. Method Definitions › 9.3.1. GET", "#section-9.3.1"),
+    ("security_considerations", "17. Security Considerations", "#section-17"),
+    ("name-security-considerations", "17. Security Considerations", "#section-17"),
+    ("appendix-B.1", "Appendix B. Changes from Previous RFCs › B.1. Changes from RFC 2818", "#appendix-B.1"),
+    ("b.1", "Appendix B. Changes from Previous RFCs › B.1. Changes from RFC 2818", "#appendix-B.1"),
+    ("Appendix B", "Appendix B. Changes from Previous RFCs", "#appendix-B"),
+    ("section-B", "Appendix B. Changes from Previous RFCs", "#appendix-B"),
+    ("Acknowledgements", "Acknowledgements", ""),
+])
+def test_ways_to_name_a_section(rfc, wanted, path, anchor):
+    lines = expand(rfc, f"9110#{wanted}").splitlines()
+    assert lines[1] == f"https://www.rfc-editor.org/rfc/rfc9110.html{anchor}"
+    assert f"Section: {path}" in lines
+
+
+def test_a_section_comes_with_its_subsections_up_to_the_next_of_its_level(rfc):
+    text = expand(rfc, "9110#9")
+    assert "9.1.  Overview" in text and "9.3.2.  HEAD" in text and "send content in the response" in text
+    assert "Security Considerations" not in text
+    appendix = expand(rfc, "9110#appendix-B")
+    assert "B.1.  Changes from RFC 2818" in appendix and "None." in appendix
+    assert "Aside from the current editors" not in appendix  # Acknowledgements ends the appendix
+
+
+def test_a_paginated_rfc_loses_its_page_breaks(rfc):
+    transport = site()
+    text = expand(rfc, "2616#13.1.1", transport)
+    assert [call[0] for call in transport.calls][1] == "https://www.rfc-editor.org/rfc/rfc2616.txt"
+    lines = text.splitlines()
+    # RFC 2616 has no "13.1" heading line; 13.1.1 still sits under 13.
+    assert "Section: 13. Caching in HTTP › 13.1.1. Cache Correctness" in lines
+    assert "Note: obsoleted by RFC 7230, RFC 7231, RFC 7232, RFC 7233, RFC 7234, RFC 7235; " \
+           "the newer RFC replaces this one." in lines
+    assert "[Page" not in text and "RFC 2616                        HTTP/1.1" not in text and "\f" not in text
+    # The section runs across a page break (after "[Page 75]"), up to 13.1.2.
+    assert '      2. It is "fresh enough" (see section 13.2). In the default case,' in lines
+    assert "MAY display a warning indication to the user." in text and "Warnings" not in text
+
+
+def test_an_unknown_section_names_the_sections(rfc):
+    with pytest.raises(rfc.RfcRefError) as error:
+        expand(rfc, "9110#4.9")
+    assert str(error.value) == (
+        "no section '4.9' in RFC 9110. Sections: 1. Introduction, 9. Methods, 17. Security Considerations, "
+        "Appendix B. Changes from Previous RFCs, Acknowledgements, Authors' Addresses"
+    )
+    with pytest.raises(rfc.RfcRefError, match=re.escape(
+        "no section 'Securty Considerations' in RFC 9110; did you mean '17. Security Considerations'? Sections: "
+    )):
+        expand(rfc, "9110#Securty Considerations")
+    with pytest.raises(rfc.RfcRefError, match=re.escape(
+        "no section 'name-securty-considerations' in RFC 9110; did you mean '17. Security Considerations'?"
+    )):
+        expand(rfc, "9110#name-securty-considerations")
+
+
+def test_a_long_section_list_is_shortened(rfc, monkeypatch):
+    monkeypatch.setattr(rfc, "SECTIONS_LISTED_IN_ERRORS", 2)
+    with pytest.raises(rfc.RfcRefError, match=re.escape("Sections: 1. Introduction, 9. Methods, … (4 more)")):
+        expand(rfc, "9110#4.9")
+
+
+def test_an_rfc_without_a_text_version_says_so_after_one_request(rfc):
+    transport = site()
+    with pytest.raises(rfc.RfcRefError, match=re.escape(
+        "RFC 8 has no plain-text version on the RFC Editor (formats: PDF), so #1 cannot be cut out; "
+        "write @rfc:8 for its record"
+    )):
+        expand(rfc, "8#1", transport)
+    assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("status, message", [
+    (404, "the RFC Editor has no text of RFC 9110"),
+    (503, "www.rfc-editor.org answered HTTP 503 for the text of RFC 9110"),
+    (302, "answered HTTP 302 with a redirect off https://www.rfc-editor.org; not followed"),
+])
+def test_text_failures_become_reference_errors(rfc, status, message):
+    def respond(url, timeout):
+        return (200, json.dumps(RECORDS[9110]).encode()) if url.endswith(".json") else (status, b"")
+
+    with pytest.raises(rfc.RfcRefError, match=re.escape(message)):
+        expand(rfc, "9110#9", RecordingTransport(respond))
+
+
+def test_a_long_section_is_truncated_with_a_note(rfc):
+    text = expand(rfc, "9110#9", max_chars=200)
+    assert "(section truncated to 200 characters)" in text and "HEAD" not in text
+
+
+@pytest.mark.parametrize("value", [199, 50_001, "6000", True])
+def test_an_unusable_max_chars_fails_loudly_for_a_section_before_any_request(rfc, value):
+    transport = site()
+    with pytest.raises(rfc.RfcRefError, match=re.escape(f"settings.max_chars is {value!r}; use a whole number")):
+        expand(rfc, "9110#9", transport, max_chars=value)
+    assert transport.calls == []
+    # It only applies to sections: a plain reference still attaches the record.
+    assert expand(rfc, "9110", transport, max_chars=value).startswith("RFC 9110: HTTP Semantics")
+
+
+def test_the_two_requests_share_one_timeout(rfc):
+    def slow_record(url, timeout):
+        if url.endswith(".json"):
+            time.sleep(0.3)
+            return 200, json.dumps(RECORDS[9110]).encode()
+        return 200, TEXTS[9110]
+
+    transport = RecordingTransport(slow_record)
+    expand(rfc, "9110#9", transport, timeout_seconds=2)
+    assert transport.calls[0][1] == 2 and 1 < transport.calls[1][1] < 1.75
+
+    too_slow = RecordingTransport(lambda url, t: (time.sleep(0.6), slow_record(url, t))[1])
+    with pytest.raises(rfc.RfcRefError, match=re.escape("www.rfc-editor.org did not answer within 1s")):
+        expand(rfc, "9110#9", too_slow, timeout_seconds=1)
+    assert len(too_slow.calls) == 1
+
+
+def test_an_empty_section_part_attaches_the_record(rfc):
+    transport = site()
+    assert "Abstract:" in expand(rfc, "9110#", transport)
+    assert len(transport.calls) == 1
+
+
+# Real lines from older RFCs, where the plain-text layout differs.
+
+def test_a_wrapped_heading_is_joined(rfc):
+    lines = [
+        "   according to Section 2.6.3.1.1.3.",
+        "",
+        "2.6.3.1.1.3.  Put Filehandle Operation + LOOKUP (or OPEN of an Existing",
+        "              Name)",
+        "",
+        "   This situation also applies to a put filehandle operation followed by",
+    ]  # RFC 5661
+    [section] = rfc.find_sections(lines)
+    assert section.title == "Put Filehandle Operation + LOOKUP (or OPEN of an Existing Name)"
+    assert rfc.section_text(lines, [section], section)[1] == lines[-1]
+
+
+def test_a_numbered_paragraph_keeps_its_text(rfc):
+    lines = [
+        "",
+        '1. MUST   This word, or the terms "REQUIRED" or "SHALL", mean that the',
+        "   definition is an absolute requirement of the specification.",
+        "",
+        '2. MUST NOT   This phrase, or the phrase "SHALL NOT", mean that the',
+        "   definition is an absolute prohibition of the specification.",
+    ]  # RFC 2119
+    sections = rfc.find_sections(lines)
+    assert [s.number for s in sections] == ["1", "2"]
+    assert rfc.section_text(lines, sections, sections[0])[1] == lines[2]
+
+
+def test_column_zero_text_out_of_order_is_not_a_heading(rfc):
+    lines = [
+        "3.4.  Interpretation",
+        "",
+        "   The default is Interpretation in Section 3.4.",
+        "",
+        "1.   Unless there is private agreement between particular resolvers",
+        "",
+        "3.5.  Next",
+    ]  # the "1." line is from RFC 1123
+    assert [s.number for s in rfc.find_sections(lines)] == ["3.4", "3.5"]
+
+
+def test_a_heading_follows_a_blank_line(rfc):
+    lines = [
+        "3.4.  Interpretation",
+        "",
+        "For example, if PROTOCOL=TCP (6), the 26th bit corresponds to TCP port",
+        "25 (SMTP).  If this bit is set, a SMTP server should be listening on TCP",
+        "port 25; if zero, SMTP service is not supported on the specified",
+    ]  # the body text is from RFC 1035, which puts it in column 0
+    assert [s.number for s in rfc.find_sections(lines)] == ["3.4"]
+
+
+# Real headings of RFC 9110 and the ids its HTML gives them (https://www.rfc-editor.org/rfc/rfc9110.html).
+_NAMED_HEADINGS = [
+    ("4.2.3", "http(s) Normalization and Comparison", "name-https-normalization-and-com"),
+    ("5.6.7", "Date/Time Formats", "name-date-time-formats"),
+    ("6.5.1", "Limitations on Use of Trailers", "name-limitations-on-use-of-trail"),
+    ("8.8.2.2", "Comparison", "name-comparison"),
+    ("8.8.3.2", "Comparison", "name-comparison-2"),
+    ("16.3.2", "Considerations for New Fields", "name-considerations-for-new-fiel"),
+    ("16.3.2.1", "Considerations for New Field Names", "name-considerations-for-new-field"),
+    ("16.3.2.2", "Considerations for New Field Values", "name-considerations-for-new-field-"),
+    ("16.4.1", "Authentication Scheme Registry", "name-authentication-scheme-regis"),
+    ("18.5", "Authentication Scheme Registration", "name-authentication-scheme-regist"),
+]
+
+
+def test_name_ids_match_the_rfc_editors_html(rfc):
+    sections = [rfc.Section(number, title, number.count(".") + 1, i, i + 1)
+                for i, (number, title, _id) in enumerate(_NAMED_HEADINGS)]
+    assert {a: s.number for a, s in rfc.name_anchors(sections).items()} == {a: n for n, _t, a in _NAMED_HEADINGS}
+    assert rfc.find_section(sections, "Name-Comparison-2").number == "8.8.3.2"
+    assert rfc.find_section(sections, "name-comparison-3") is None
+
+
+def test_a_section_without_text_says_so(rfc):
+    texts = {9110: b"1.  Introduction\n\n2.  Conformance\n\n   Text.\n"}
+    with pytest.raises(rfc.RfcRefError, match=re.escape("section '1. Introduction' of RFC 9110 has no text")):
+        expand(rfc, "9110#1", site(texts=texts))
+
+
+def test_table_of_contents_lines_and_centered_headings_are_skipped(rfc):
+    lines = [
+        "1.  INTRODUCTION ..................................................... 1",
+        "",
+        "                            1.  INTRODUCTION",
+        "",
+        "1.1.  Motivation",
+        "",
+        "  The Internet Protocol is designed for use in interconnected systems of",
+    ]  # RFC 791
+    sections = rfc.find_sections(lines)
+    assert [s.number for s in sections] == ["1.1"]
+    # With "1" not found, the warning still lists what was found.
+    with pytest.raises(rfc.RfcRefError, match=re.escape("no section '1' in RFC 791. Sections: 1.1. Motivation")):
+        raise rfc._section_not_found(sections, "1", 791)
+
+
+def test_a_text_without_column_zero_headings_says_so(rfc):
+    lines = ["     1.  INTRODUCTION", "", "          This standard specifies a syntax"]  # RFC 822
+    assert rfc.find_sections(lines) == []
+    with pytest.raises(rfc.RfcRefError, match=re.escape(
+        "found no numbered sections in the text of RFC 822; write @rfc:822 for its record"
+    )):
+        raise rfc._section_not_found([], "1", 822)
 
 
 def test_a_long_abstract_is_truncated_with_a_note(rfc, monkeypatch):
@@ -284,10 +547,14 @@ def http_server():
 
 
 def test_http_get_sends_the_user_agent_and_returns_error_statuses(rfc, http_server):
-    _Handler.routes = {"/ok": (200, {}, b'{"doc_id": "RFC1"}'), "/gone": (404, {}, b"404 - Not found")}
+    _Handler.routes = {"/ok": (200, {}, b'{"doc_id": "RFC1"}'), "/gone": (404, {}, b"404 - Not found"),
+                       "/rfc1.txt": (200, {}, b"text")}
     assert rfc.http_get(f"{http_server}/ok", 5) == (200, b'{"doc_id": "RFC1"}')
     assert rfc.http_get(f"{http_server}/gone", 5) == (404, b"")
-    assert {(s["ua"], s["accept"]) for s in _Handler.seen} == {(rfc.USER_AGENT, "application/json")}
+    assert rfc.http_get(f"{http_server}/rfc1.txt", 5) == (200, b"text")
+    assert [(s["ua"], s["accept"]) for s in _Handler.seen] == [
+        (rfc.USER_AGENT, "application/json"), (rfc.USER_AGENT, "application/json"), (rfc.USER_AGENT, "text/plain"),
+    ]
 
 
 def test_http_get_refuses_oversized_bodies(rfc, http_server, monkeypatch):

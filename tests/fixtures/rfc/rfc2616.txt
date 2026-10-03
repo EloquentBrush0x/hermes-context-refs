@@ -1,0 +1,394 @@
+
+
+
+
+
+
+Network Working Group                                      R. Fielding
+Request for Comments: 2616                                   UC Irvine
+Obsoletes: 2068                                              J. Gettys
+Category: Standards Track                                   Compaq/W3C
+                                                              J. Mogul
+                                                                Compaq
+                                                            H. Frystyk
+                                                               W3C/MIT
+                                                           L. Masinter
+                                                                 Xerox
+                                                              P. Leach
+                                                             Microsoft
+                                                        T. Berners-Lee
+                                                               W3C/MIT
+                                                             June 1999
+
+
+                Hypertext Transfer Protocol -- HTTP/1.1
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the "Internet
+   Official Protocol Standards" (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Copyright Notice
+
+   Copyright (C) The Internet Society (1999).  All Rights Reserved.
+
+Abstract
+
+   The Hypertext Transfer Protocol (HTTP) is an application-level
+   protocol for distributed, collaborative, hypermedia information
+   systems. It is a generic, stateless, protocol which can be used for
+   many tasks beyond its use for hypertext, such as name servers and
+   distributed object management systems, through extension of its
+   request methods, error codes and headers [47]. A feature of HTTP is
+   the typing and negotiation of data representation, allowing systems
+   to be built independently of the data being transferred.
+
+   HTTP has been in use by the World-Wide Web global information
+   initiative since 1990. This specification defines the protocol
+   referred to as "HTTP/1.1", and is an update to RFC 2068 [33].
+
+
+
+
+
+
+Fielding, et al.            Standards Track                     [Page 1]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+   HTTP/1.1 defines the 300 (Multiple Choices) and 406 (Not Acceptable)
+   status codes for enabling agent-driven negotiation when the server is
+   unwilling or unable to provide a varying response using server-driven
+   negotiation.
+
+12.3 Transparent Negotiation
+
+   Transparent negotiation is a combination of both server-driven and
+   agent-driven negotiation. When a cache is supplied with a form of the
+   list of available representations of the response (as in agent-driven
+   negotiation) and the dimensions of variance are completely understood
+   by the cache, then the cache becomes capable of performing server-
+   driven negotiation on behalf of the origin server for subsequent
+   requests on that resource.
+
+   Transparent negotiation has the advantage of distributing the
+   negotiation work that would otherwise be required of the origin
+   server and also removing the second request delay of agent-driven
+   negotiation when the cache is able to correctly guess the right
+   response.
+
+   This specification does not define any mechanism for transparent
+   negotiation, though it also does not prevent any such mechanism from
+   being developed as an extension that could be used within HTTP/1.1.
+
+13 Caching in HTTP
+
+   HTTP is typically used for distributed information systems, where
+   performance can be improved by the use of response caches. The
+   HTTP/1.1 protocol includes a number of elements intended to make
+   caching work as well as possible. Because these elements are
+   inextricable from other aspects of the protocol, and because they
+   interact with each other, it is useful to describe the basic caching
+   design of HTTP separately from the detailed descriptions of methods,
+   headers, response codes, etc.
+
+   Caching would be useless if it did not significantly improve
+   performance. The goal of caching in HTTP/1.1 is to eliminate the need
+   to send requests in many cases, and to eliminate the need to send
+   full responses in many other cases. The former reduces the number of
+   network round-trips required for many operations; we use an
+   "expiration" mechanism for this purpose (see section 13.2). The
+   latter reduces network bandwidth requirements; we use a "validation"
+   mechanism for this purpose (see section 13.3).
+
+   Requirements for performance, availability, and disconnected
+   operation require us to be able to relax the goal of semantic
+   transparency. The HTTP/1.1 protocol allows origin servers, caches,
+
+
+
+Fielding, et al.            Standards Track                    [Page 74]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+   and clients to explicitly reduce transparency when necessary.
+   However, because non-transparent operation may confuse non-expert
+   users, and might be incompatible with certain server applications
+   (such as those for ordering merchandise), the protocol requires that
+   transparency be relaxed
+
+      - only by an explicit protocol-level request when relaxed by
+        client or origin server
+
+      - only with an explicit warning to the end user when relaxed by
+        cache or client
+
+   Therefore, the HTTP/1.1 protocol provides these important elements:
+
+      1. Protocol features that provide full semantic transparency when
+         this is required by all parties.
+
+      2. Protocol features that allow an origin server or user agent to
+         explicitly request and control non-transparent operation.
+
+      3. Protocol features that allow a cache to attach warnings to
+         responses that do not preserve the requested approximation of
+         semantic transparency.
+
+   A basic principle is that it must be possible for the clients to
+   detect any potential relaxation of semantic transparency.
+
+      Note: The server, cache, or client implementor might be faced with
+      design decisions not explicitly discussed in this specification.
+      If a decision might affect semantic transparency, the implementor
+      ought to err on the side of maintaining transparency unless a
+      careful and complete analysis shows significant benefits in
+      breaking transparency.
+
+13.1.1 Cache Correctness
+
+   A correct cache MUST respond to a request with the most up-to-date
+   response held by the cache that is appropriate to the request (see
+   sections 13.2.5, 13.2.6, and 13.12) which meets one of the following
+   conditions:
+
+      1. It has been checked for equivalence with what the origin server
+         would have returned by revalidating the response with the
+         origin server (section 13.3);
+
+
+
+
+
+
+
+Fielding, et al.            Standards Track                    [Page 75]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+      2. It is "fresh enough" (see section 13.2). In the default case,
+         this means it meets the least restrictive freshness requirement
+         of the client, origin server, and cache (see section 14.9); if
+         the origin server so specifies, it is the freshness requirement
+         of the origin server alone.
+
+         If a stored response is not "fresh enough" by the most
+         restrictive freshness requirement of both the client and the
+         origin server, in carefully considered circumstances the cache
+         MAY still return the response with the appropriate Warning
+         header (see section 13.1.5 and 14.46), unless such a response
+         is prohibited (e.g., by a "no-store" cache-directive, or by a
+         "no-cache" cache-request-directive; see section 14.9).
+
+      3. It is an appropriate 304 (Not Modified), 305 (Proxy Redirect),
+         or error (4xx or 5xx) response message.
+
+   If the cache can not communicate with the origin server, then a
+   correct cache SHOULD respond as above if the response can be
+   correctly served from the cache; if not it MUST return an error or
+   warning indicating that there was a communication failure.
+
+   If a cache receives a response (either an entire response, or a 304
+   (Not Modified) response) that it would normally forward to the
+   requesting client, and the received response is no longer fresh, the
+   cache SHOULD forward it to the requesting client without adding a new
+   Warning (but without removing any existing Warning headers). A cache
+   SHOULD NOT attempt to revalidate a response simply because that
+   response became stale in transit; this might lead to an infinite
+   loop. A user agent that receives a stale response without a Warning
+   MAY display a warning indication to the user.
+
+13.1.2 Warnings
+
+   Whenever a cache returns a response that is neither first-hand nor
+   "fresh enough" (in the sense of condition 2 in section 13.1.1), it
+   MUST attach a warning to that effect, using a Warning general-header.
+   The Warning header and the currently defined warnings are described
+   in section 14.46. The warning allows clients to take appropriate
+   action.
+
+   Warnings MAY be used for other purposes, both cache-related and
+   otherwise. The use of a warning, rather than an error status code,
+   distinguish these responses from true failures.
+
+   Warnings are assigned three digit warn-codes. The first digit
+   indicates whether the Warning MUST or MUST NOT be deleted from a
+   stored cache entry after a successful revalidation:
+
+
+
+Fielding, et al.            Standards Track                    [Page 76]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+   1xx  Warnings that describe the freshness or revalidation status of
+     the response, and so MUST be deleted after a successful
+     revalidation. 1XX warn-codes MAY be generated by a cache only when
+     validating a cached entry. It MUST NOT be generated by clients.
+
+   2xx  Warnings that describe some aspect of the entity body or entity
+     headers that is not rectified by a revalidation (for example, a
+     lossy compression of the entity bodies) and which MUST NOT be
+     deleted after a successful revalidation.
+
+   See section 14.46 for the definitions of the codes themselves.
+
+   HTTP/1.0 caches will cache all Warnings in responses, without
+   deleting the ones in the first category. Warnings in responses that
+   are passed to HTTP/1.0 caches carry an extra warning-date field,
+   which prevents a future HTTP/1.1 recipient from believing an
+   erroneously cached Warning.
+
+   Warnings also carry a warning text. The text MAY be in any
+   appropriate natural language (perhaps based on the client's Accept
+   headers), and include an OPTIONAL indication of what character set is
+   used.
+
+   Multiple warnings MAY be attached to a response (either by the origin
+   server or by a cache), including multiple warnings with the same code
+   number. For example, a server might provide the same warning with
+   texts in both English and Basque.
+
+   When multiple warnings are attached to a response, it might not be
+   practical or reasonable to display all of them to the user. This
+   version of HTTP does not specify strict priority rules for deciding
+   which warnings to display and in what order, but does suggest some
+   heuristics.
+
+13.1.3 Cache-control Mechanisms
+
+   The basic cache mechanisms in HTTP/1.1 (server-specified expiration
+   times and validators) are implicit directives to caches. In some
+   cases, a server or client might need to provide explicit directives
+   to the HTTP caches. We use the Cache-Control header for this purpose.
+
+   The Cache-Control header allows a client or server to transmit a
+   variety of directives in either requests or responses. These
+   directives typically override the default caching algorithms. As a
+   general rule, if there is any apparent conflict between header
+   values, the most restrictive interpretation is applied (that is, the
+   one that is most likely to preserve semantic transparency). However,
+
+
+
+
+Fielding, et al.            Standards Track                    [Page 77]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+14.9 Cache-Control
+
+   The Cache-Control general-header field is used to specify directives
+   that MUST be obeyed by all caching mechanisms along the
+   request/response chain. The directives specify behavior intended to
+   prevent caches from adversely interfering with the request or
+   response. These directives typically override the default caching
+   algorithms. Cache directives are unidirectional in that the presence
+   of a directive in a request does not imply that the same directive is
+   to be given in the response.
+
+      Note that HTTP/1.0 caches might not implement Cache-Control and
+      might only implement Pragma: no-cache (see section 14.32).
+
+   Cache directives MUST be passed through by a proxy or gateway
+   application, regardless of their significance to that application,
+   since the directives might be applicable to all recipients along the
+   request/response chain. It is not possible to specify a cache-
+   directive for a specific cache.
+
+    Cache-Control   = "Cache-Control" ":" 1#cache-directive
+
+    cache-directive = cache-request-directive
+         | cache-response-directive
+
+    cache-request-directive =
+           "no-cache"                          ; Section 14.9.1
+         | "no-store"                          ; Section 14.9.2
+         | "max-age" "=" delta-seconds         ; Section 14.9.3, 14.9.4
+         | "max-stale" [ "=" delta-seconds ]   ; Section 14.9.3
+         | "min-fresh" "=" delta-seconds       ; Section 14.9.3
+         | "no-transform"                      ; Section 14.9.5
+         | "only-if-cached"                    ; Section 14.9.4
+         | cache-extension                     ; Section 14.9.6
+
+     cache-response-directive =
+           "public"                               ; Section 14.9.1
+         | "private" [ "=" <"> 1#field-name <"> ] ; Section 14.9.1
+         | "no-cache" [ "=" <"> 1#field-name <"> ]; Section 14.9.1
+         | "no-store"                             ; Section 14.9.2
+         | "no-transform"                         ; Section 14.9.5
+         | "must-revalidate"                      ; Section 14.9.4
+         | "proxy-revalidate"                     ; Section 14.9.4
+         | "max-age" "=" delta-seconds            ; Section 14.9.3
+         | "s-maxage" "=" delta-seconds           ; Section 14.9.3
+         | cache-extension                        ; Section 14.9.6
+
+    cache-extension = token [ "=" ( token | quoted-string ) ]
+
+
+
+Fielding, et al.            Standards Track                   [Page 108]
+
+RFC 2616                        HTTP/1.1                       June 1999
+
+
+   When a directive appears without any 1#field-name parameter, the
+   directive applies to the entire request or response. When such a
+   directive appears with a 1#field-name parameter, it applies only to
+   the named field or fields, and not to the rest of the request or
+   response. This mechanism supports extensibility; implementations of
+   future versions of the HTTP protocol might apply these directives to
+   header fields not defined in HTTP/1.1.
+
+   The cache-control directives can be broken down into these general
+   categories:
+
+      - Restrictions on what are cacheable; these may only be imposed by
+        the origin server.
+
+      - Restrictions on what may be stored by a cache; these may be
+        imposed by either the origin server or the user agent.
+
+      - Modifications of the basic expiration mechanism; these may be
+        imposed by either the origin server or the user agent.
+
+      - Controls over cache revalidation and reload; these may only be
+        imposed by a user agent.
+
+      - Control over transformation of entities.
+
+      - Extensions to the caching system.
+
+14.9.1 What is Cacheable
+
+   By default, a response is cacheable if the requirements of the
+   request method, request header fields, and the response status
+   indicate that it is cacheable. Section 13.4 summarizes these defaults
+   for cacheability. The following Cache-Control response directives
+   allow an origin server to override the default cacheability of a
+   response:
+
+   public
+      Indicates that the response MAY be cached by any cache, even if it
+      would normally be non-cacheable or cacheable only within a non-
+      shared cache. (See also Authorization, section 14.8, for
+      additional details.)
+
+   private
+      Indicates that all or part of the response message is intended for
+      a single user and MUST NOT be cached by a shared cache. This
+      allows an origin server to state that the specified parts of the
+
+
+
+
+
+Fielding, et al.            Standards Track                   [Page 109]

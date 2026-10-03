@@ -10,7 +10,7 @@ Each plugin lives in its own directory and is installed on its own.
 | [osv-ref](osv-ref/) | `@cve:<id>`, `@ghsa:<id>`, `@osv:<id>`: a vulnerability record with affected packages and fixed versions | OSV.dev API, no key |
 | [gh-ref](gh-ref/) | `@gh:owner/repo#123`: a GitHub issue or pull request with its latest comments | GitHub REST API, anonymous |
 | [pep-ref](pep-ref/) | `@pep:<number>`: a PEP's status, authors and first section; `@pep:<number>#<section>`: one section | peps.python.org, no key |
-| [rfc-ref](rfc-ref/) | `@rfc:<number>`: an RFC's status, abstract and what obsoletes or updates it | RFC Editor, no key |
+| [rfc-ref](rfc-ref/) | `@rfc:<number>`: an RFC's status, abstract and what obsoletes or updates it; `@rfc:<number>#<section>`: one section | RFC Editor, no key |
 
 ## Development
 

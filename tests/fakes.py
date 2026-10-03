@@ -127,14 +127,18 @@ def _pep_answer(path: str) -> tuple[int, str, bytes]:
     return 404, "text/html; charset=utf-8", b"<html>Page not found</html>"
 
 
-# www.rfc-editor.org: the real RFC 9110 record from tests/fixtures.
+# www.rfc-editor.org: the real RFC 9110 record and the trimmed real text from tests/fixtures.
 RFC_RECORDS = {9110: (_FIXTURES / "rfc" / "rfc9110.json").read_bytes()}
+RFC_TEXTS = {9110: (_FIXTURES / "rfc" / "rfc9110.txt").read_bytes()}
 
 
 def _rfc_answer(path: str) -> tuple[int, str, bytes]:
-    match = re.fullmatch(r"/rfc/rfc(\d+)\.json", path)
-    if match and int(match.group(1)) in RFC_RECORDS:
-        return 200, "application/json;charset=utf-8", RFC_RECORDS[int(match.group(1))]
+    match = re.fullmatch(r"/rfc/rfc(\d+)\.(json|txt)", path)
+    number = int(match.group(1)) if match else None
+    if match and match.group(2) == "json" and number in RFC_RECORDS:
+        return 200, "application/json;charset=utf-8", RFC_RECORDS[number]
+    if match and match.group(2) == "txt" and number in RFC_TEXTS:
+        return 200, "text/plain; charset=utf-8", RFC_TEXTS[number]
     return 404, "text/plain;charset=utf-8", b"404 - Not found"
 
 

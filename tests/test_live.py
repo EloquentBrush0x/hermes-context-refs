@@ -146,3 +146,20 @@ def test_live_rfc_record_obsoleted_rfc_and_missing_number(rfc):
     assert any(line.startswith("Note: obsoleted by RFC 7230") for line in run(provider.expand("2616")).splitlines())
     with pytest.raises(rfc.RfcRefError, match="the RFC Editor has no RFC 26"):
         run(provider.expand("26"))
+
+
+def test_live_rfc_sections_from_current_and_paginated_texts(rfc):
+    provider = rfc.RfcReferenceProvider()
+    lines = run(provider.expand("9110#section-9.3.1")).splitlines()
+    assert lines[1] == "https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.1"
+    assert "Section: 9. Methods › 9.3. Method Definitions › 9.3.1. GET" in lines
+    assert any(line.strip().startswith("The GET method requests transfer") for line in lines)
+    text = run(provider.expand("2616#13.1.1"))
+    assert "Section: 13. Caching in HTTP › 13.1.1. Cache Correctness" in text
+    assert "[Page" not in text and "\f" not in text
+    assert "Appendix B. Protocol Data Structures and Constant Values › B.4. Cipher Suites" in run(
+        provider.expand("8446#appendix-B.4")
+    )
+    assert "#section-9.3.1" in run(provider.expand("9110#name-get")).splitlines()[1]
+    with pytest.raises(rfc.RfcRefError, match="RFC 8 has no plain-text version"):
+        run(provider.expand("8#1"))

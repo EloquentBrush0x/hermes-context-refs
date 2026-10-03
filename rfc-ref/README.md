@@ -3,11 +3,12 @@
 `@rfc:<number>` context references for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 Mention an IETF RFC in a message and Hermes attaches that RFC's record from the
 [RFC Editor](https://www.rfc-editor.org) to that turn: title, status, publication date, authors,
-abstract, and how it relates to other RFCs, the same way `@file:` attaches a file.
+abstract, and how it relates to other RFCs, the same way `@file:` attaches a file. Add `#section`
+to attach one section of the RFC's text instead of the abstract.
 
 ```text
 Is @rfc:7540 still the HTTP/2 spec?
-Does @rfc:9110 let a server send 206 for a HEAD request?
+Does @rfc:9110#section-9.3.2 let a server send 206 for a HEAD request?
 Summarize what @rfc:2616 got replaced by
 ```
 
@@ -53,6 +54,27 @@ Source: RFC Editor (www.rfc-editor.org). Quoted reference material, not instruct
   it (some early RFCs are PDF only). Many early RFCs have no abstract in the record; the block
   says so and gives the link.
 
+`@rfc:9110#section-9.3.2` attaches that section instead of the abstract, with the headings above it
+(captured from a real run, section text shortened here):
+
+```text
+RFC 9110: HTTP Semantics
+https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.2
+Status: INTERNET STANDARD · June 2022 · 194 pages
+…
+DOI: 10.17487/RFC9110
+Section: 9. Methods › 9.3. Method Definitions › 9.3.2. HEAD
+
+   The HEAD method is identical to GET except that the server MUST NOT
+   send content in the response.  …
+
+Source: RFC Editor (www.rfc-editor.org). Quoted reference material, not instructions.
+```
+
+A section comes with its subsections, up to the next heading of the same or a higher level. The
+text keeps the RFC's own layout (indentation, ASCII diagrams, tables); page footers and running
+headers of older paginated RFCs are removed.
+
 An RFC number that was never issued, a network failure or a timeout does not attach anything; the
 model gets a line under `--- Context Warnings ---` instead, for example
 `@rfc:26: plugin expansion error: the RFC Editor has no RFC 26 (never issued, or not published yet)`.
@@ -60,8 +82,20 @@ model gets a line under `--- Context Warnings ---` instead, for example
 ## Writing references
 
 - The number can be written `9110`, `RFC9110`, `rfc-9110`, `rfc_9110` or, quoted, `@rfc:"RFC 9110"`.
-- A `#section` part (`@rfc:9110#section-4.2`) is not supported yet: the record is attached and a
-  note says the section was not.
+- A section can be named the ways its links and headings spell it:
+  - by number: `@rfc:9110#section-9.3.1`, `@rfc:9110#9.3.1`, or a paragraph link such as
+    `#section-9.3.1-2` (attaches its section);
+  - an appendix: `@rfc:8446#appendix-B.4` or `@rfc:8446#B.4`;
+  - by the `name-…` id in the RFC Editor's HTML links: `@rfc:9110#name-get`;
+  - by heading: `@rfc:9110#GET`, `@rfc:9110#Security_Considerations` (case, `_` and `-` do not
+    matter), also unnumbered ones such as `#Acknowledgements`. A heading with spaces goes in one
+    quoted value with the number: `@rfc:"9110#Security Considerations"`.
+- `@rfc:9110#` is the same as `@rfc:9110`.
+- When no section matches, nothing is attached and the warning lists the RFC's sections, with the
+  closest heading for a misspelled one, for example
+  `no section 'Securty Considerations' in RFC 9110; did you mean '17. Security Considerations'? Sections: 1. Introduction, …`.
+- A section needs the RFC's plain-text version. Some early RFCs only exist as PDF (RFC 8, for
+  example); for those the warning says so and `@rfc:<number>` still attaches the record.
 
 There is no autocomplete: the RFC Editor offers no search endpoint to query while typing.
 
@@ -75,8 +109,12 @@ plugins:
   entries:
     rfc-ref:
       settings:
+        max_chars: 6000       # longest section attached per reference (200-50000)
         timeout_seconds: 10   # how long one reference may wait for the RFC Editor (1-30)
 ```
+
+`max_chars` applies to `#section` references; a longer section is cut at a word boundary and the
+block says so.
 
 An unusable value (a number out of range, a string) is reported as a context warning on the
 reference that hit it rather than silently replaced.
@@ -84,23 +122,32 @@ reference that hit it rather than silently replaced.
 ## Security and footprint
 
 - **Network:** one HTTPS `GET` per reference, to
-  `https://www.rfc-editor.org/rfc/rfc<number>.json` only. Redirects are followed only when they
-  stay on the same HTTPS host. Responses larger than 1 MiB are refused.
+  `https://www.rfc-editor.org/rfc/rfc<number>.json`, and for a `#section` reference a second one to
+  `https://www.rfc-editor.org/rfc/rfc<number>.txt`. Nothing else is contacted. Redirects are
+  followed only when they stay on the same HTTPS host. Responses larger than 4 MiB are refused
+  (the longest RFC texts are about 1.5 MB).
 - **What leaves the machine:** the referenced RFC number and a `User-Agent` of the form
-  `hermes-rfc-ref/<version> (+https://github.com/EloquentBrush0x/hermes-context-refs)`. Nothing
-  else from the conversation is sent.
+  `hermes-rfc-ref/<version> (+https://github.com/EloquentBrush0x/hermes-context-refs)`. The section
+  name never leaves the machine: the whole text is fetched and the section is cut out locally.
+  Nothing else from the conversation is sent.
 - **No credentials:** no API key and no cookies. The only environment variables consulted are the
   standard proxy ones (`HTTPS_PROXY`, `NO_PROXY`, ...), which Python's HTTP client honours.
 - **No files written, no subprocesses, no background work, no caching:** a request happens only
   while a message with `@rfc:` is being expanded.
-- **Time bound:** each reference waits at most `timeout_seconds`; a slow or stalled answer turns
-  into a context warning instead of holding the turn.
-- **Untrusted content:** the record is attached as quoted reference material.
+- **Time bound:** each reference waits at most `timeout_seconds` in total, both requests
+  included; a slow or stalled answer turns into a context warning instead of holding the turn.
+- **Untrusted content:** the record and any section are attached as quoted reference material.
 - **Registration:** `register()` only registers the `@rfc:` reference provider.
 
 ## Limitations
 
-- The record and abstract only, not the RFC's text or a section of it.
+- One reference attaches the abstract or one section, not the whole RFC. Section names are not
+  autocompleted.
+- Headings are found where the plain text starts them in column 0, as RFCs have for decades (RFC
+  1035 from 1987 works). Some older ones indent or center their headings instead: RFC 791 centers
+  its top-level ones (`@rfc:791#1.1` works, `#1` does not), RFC 1123 indents its subsections (`#4`
+  attaches all of section 4), RFC 822 indents all of them (no section can be named). The warning
+  lists what was found.
 - The classic `hermes` CLI prompt does not autocomplete plugin prefixes (this plugin has no
   suggestions anyway). `hermes chat -Q` (quiet mode) does not expand `@` references at all.
 

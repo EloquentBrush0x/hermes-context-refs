@@ -218,12 +218,31 @@ def test_a_chat_turn_sends_the_rfc_record_to_the_model(tmp_path: Path):
         assert proc.returncode == 0, detail
         assert REPLY in proc.stdout, detail
         assert [r["path"] for r in fake.rfc_requests] == ["/rfc/rfc9110.json"], fake.rfc_requests
-        assert {r["user_agent"].split(" ")[0] for r in fake.rfc_requests} == {"hermes-rfc-ref/1.0.0"}
+        assert {r["user_agent"].split(" ")[0] for r in fake.rfc_requests} == {"hermes-rfc-ref/1.1.0"}
         [first_turn, *_] = [m for m in fake.user_messages() if "@rfc:RFC9110" in m]
         assert "--- Attached Context ---" in first_turn, first_turn
         assert "RFC 9110: HTTP Semantics\nhttps://www.rfc-editor.org/rfc/rfc9110.html" in first_turn
         assert "Obsoletes: RFC 2818, RFC 7230" in first_turn
         assert "Abstract:\nThe Hypertext Transfer Protocol (HTTP) is a stateless" in first_turn
+
+
+def test_a_chat_turn_sends_an_rfc_section_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(RFC_DIR,))
+        proc = _chat(home, work, fake.origin, "Can a GET have a body per @rfc:9110#section-9.3.1? One line.")
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert REPLY in proc.stdout, detail
+        assert [r["path"] for r in fake.rfc_requests] == ["/rfc/rfc9110.json", "/rfc/rfc9110.txt"], fake.rfc_requests
+        [first_turn, *_] = [m for m in fake.user_messages() if "@rfc:9110#section-9.3.1" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "https://www.rfc-editor.org/rfc/rfc9110.html#section-9.3.1" in first_turn, first_turn
+        assert "Section: 9. Methods › 9.3. Method Definitions › 9.3.1. GET" in first_turn, first_turn
+        assert "The GET method requests transfer of a current selected representation" in first_turn
+        assert "Abstract:" not in first_turn and "HEAD method" not in first_turn
 
 
 def test_an_unissued_rfc_reaches_the_model_as_a_warning(tmp_path: Path):

@@ -1,0 +1,161 @@
+﻿
+
+
+
+Internet Engineering Task Force (IETF)                  R. Fielding, Ed.
+Request for Comments: 9110                                         Adobe
+STD: 97                                               M. Nottingham, Ed.
+Obsoletes: 2818, 7230, 7231, 7232, 7233, 7235,                    Fastly
+           7538, 7615, 7694                              J. Reschke, Ed.
+Updates: 3864                                                 greenbytes
+Category: Standards Track                                      June 2022
+ISSN: 2070-1721
+
+
+                             HTTP Semantics
+
+Abstract
+
+   The Hypertext Transfer Protocol (HTTP) is a stateless application-
+   level protocol for distributed, collaborative, hypertext information
+   systems.  This document describes the overall architecture of HTTP,
+   establishes common terminology, and defines aspects of the protocol
+   that are shared by all versions.  In this definition are core
+   protocol elements, extensibility mechanisms, and the "http" and
+   "https" Uniform Resource Identifier (URI) schemes.
+
+   This document updates RFC 3864 and obsoletes RFCs 2818, 7231, 7232,
+   7233, 7235, 7538, 7615, 7694, and portions of 7230.
+
+Status of This Memo
+
+   This is an Internet Standards Track document.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   Internet Standards is available in Section 2 of RFC 7841.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   https://www.rfc-editor.org/info/rfc9110.
+
+Copyright Notice
+
+   Copyright (c) 2022 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (https://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Revised BSD License text as described in Section 4.e of the
+   Trust Legal Provisions and are provided without warranty as described
+   in the Revised BSD License.
+
+   This document may contain material from IETF Documents or IETF
+   Contributions published or made publicly available before November
+   10, 2008.  The person(s) controlling the copyright in some of this
+   material may not have granted the IETF Trust the right to allow
+   modifications of such material outside the IETF Standards Process.
+   Without obtaining an adequate license from the person(s) controlling
+   the copyright in such materials, this document may not be modified
+   outside the IETF Standards Process, and derivative works of it may
+   not be created outside the IETF Standards Process, except to format
+   it for publication as an RFC or to translate it into languages other
+   than English.
+
+Table of Contents
+
+   1.  Introduction
+     1.1.  Purpose
+     1.2.  History and Evolution
+     1.3.  Core Semantics
+     1.4.  Specifications Obsoleted by This Document
+   2.  Conformance
+
+1.  Introduction
+
+1.1.  Purpose
+
+   The Hypertext Transfer Protocol (HTTP) is a family of stateless,
+   application-level, request/response protocols that share a generic
+   interface, extensible semantics, and self-descriptive messages to
+   enable flexible interaction with network-based hypertext information
+   systems.
+
+
+9.  Methods
+
+9.1.  Overview
+
+   The request method token is the primary source of request semantics;
+   it indicates the purpose for which the client has made this request
+   and what is expected by the client as a successful result.
+
+
+9.3.  Method Definitions
+
+9.3.1.  GET
+
+   The GET method requests transfer of a current selected representation
+   for the target resource.  A successful response reflects the quality
+   of "sameness" identified by the target URI (Section 1.2.2 of [URI]).
+   Hence, retrieving identifiable information via HTTP is usually
+   performed by making a GET request on an identifier associated with
+   the potential for providing that information in a 200 (OK) response.
+
+
+9.3.2.  HEAD
+
+   The HEAD method is identical to GET except that the server MUST NOT
+   send content in the response.  HEAD is used to obtain metadata about
+   the selected representation without transferring its representation
+   data, often for the sake of testing hypertext links or finding recent
+   modifications.
+
+
+17.  Security Considerations
+
+   This section is meant to inform developers, information providers,
+   and users of known security concerns relevant to HTTP semantics and
+   its use for transferring information over the Internet.
+   Considerations related to caching are discussed in Section 7 of
+   [CACHING], and considerations related to HTTP/1.1 message syntax and
+   parsing are discussed in Section 11 of [HTTP/1.1].
+
+
+Appendix B.  Changes from Previous RFCs
+
+B.1.  Changes from RFC 2818
+
+   None.
+
+
+Acknowledgements
+
+   Aside from the current editors, the following individuals deserve
+   special recognition for their contributions to early aspects of HTTP
+   and its core specifications: Marc Andreessen, Tim Berners-Lee, Robert
+   Cailliau, Daniel W. Connolly, Bob Denny, John Franks, Jim Gettys,
+   Jean-François Groff, Phillip M. Hallam-Baker, Koen Holtman, Jeffery
+   L. Hostetler, Shel Kaphan, Dave Kristol, Yves Lafon, Scott
+   D. Lawrence, Paul J. Leach, Håkon W. Lie, Ari Luotonen, Larry
+   Masinter, Rob McCool, Jeffrey C. Mogul, Lou Montulli, David Morris,
+   Henrik Frystyk Nielsen, Dave Raggett, Eric Rescorla, Tony Sanders,
+   Lawrence C. Stewart, Marc VanHeyningen, and Steve Zilles.
+
+
+Authors' Addresses
+
+   Roy T. Fielding (editor)
+   Adobe
+   345 Park Ave
+   San Jose, CA 95110
+   United States of America
+   Email: fielding@gbiv.com
+   URI:   https://roy.gbiv.com/
+

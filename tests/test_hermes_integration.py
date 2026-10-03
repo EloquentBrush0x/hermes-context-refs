@@ -160,14 +160,18 @@ RFC_PROBE = textwrap.dedent('''
     providers = get_context_reference_providers()
     out = {"listed": listed.get("rfc-ref"), "providers": {k: type(p).__name__ for k, p in providers.items()}}
     calls = []
-    record = {"doc_id": "RFC9110", "title": "HTTP Semantics", "status": "INTERNET STANDARD", "format": ["HTML"],
-              "abstract": "The Hypertext Transfer Protocol (HTTP) is a stateless protocol."}
+    record = {"doc_id": "RFC9110", "title": "HTTP Semantics", "status": "INTERNET STANDARD",
+              "format": ["TEXT", "HTML"], "abstract": "The Hypertext Transfer Protocol (HTTP) is a stateless protocol."}
+    text = "9.  Methods\\n\\n" + "   " + "method " * 200 + "\\n"
     def fake(url, timeout):
         calls.append({"url": url, "timeout": timeout})
-        return (200, json.dumps(record).encode()) if url.endswith("/rfc9110.json") else (404, b"")
+        if url.endswith("/rfc9110.json"):
+            return 200, json.dumps(record).encode()
+        return (200, text.encode()) if url.endswith("/rfc9110.txt") else (404, b"")
     if "rfc" in providers:
         providers["rfc"]._transport = fake
     result = preprocess_context_references("Check @rfc:9110 and @rfc:26", cwd=os.getcwd(), context_length=100000)
+    out["section"] = preprocess_context_references("See @rfc:9110#9", cwd=os.getcwd(), context_length=100000).message
     out["message"] = result.message
     from tui_gateway import server
     reply = server.handle_request({"jsonrpc": "2.0", "id": 1, "method": "complete.path",
@@ -339,14 +343,18 @@ def test_hermes_loads_pep_ref_applies_its_settings_and_autocompletes(tmp_path: P
 
 def test_hermes_loads_rfc_ref_next_to_pep_ref_and_applies_its_settings(tmp_path: Path):
     home, work = _dirs(tmp_path)
-    _write_home(home, {"rfc-ref": "timeout_seconds: 7\n", "pep-ref": ""})
+    _write_home(home, {"rfc-ref": "timeout_seconds: 7\nmax_chars: 300\n", "pep-ref": ""})
     out = _probe(RFC_PROBE, home, work)
 
     assert out["listed"]["enabled"] is True
     assert out["providers"] == {"pep": "PepReferenceProvider", "rfc": "RfcReferenceProvider"}
-    assert sorted((c["url"], c["timeout"]) for c in out["calls"]) == [
+    assert sorted((c["url"], c["timeout"]) for c in out["calls"][:2]) == [
         ("https://www.rfc-editor.org/rfc/rfc26.json", 7), ("https://www.rfc-editor.org/rfc/rfc9110.json", 7),
     ]
+    assert [c["url"] for c in out["calls"][2:]] == [
+        "https://www.rfc-editor.org/rfc/rfc9110.json", "https://www.rfc-editor.org/rfc/rfc9110.txt",
+    ]
+    assert "Section: 9. Methods" in out["section"] and "(section truncated to 300 characters)" in out["section"]
     message = out["message"]
     assert "--- Attached Context ---" in message
     assert "RFC 9110: HTTP Semantics\nhttps://www.rfc-editor.org/rfc/rfc9110.html" in message

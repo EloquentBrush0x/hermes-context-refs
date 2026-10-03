@@ -1,18 +1,25 @@
 name: rfc-ref
-version: 1.0.0
+version: 1.1.0
 manifest_version: 2
 api_version: 1
 description: >-
   @rfc:<number> context references: attach an IETF RFC's record from the RFC Editor (title,
   status, date, authors, abstract, what it obsoletes and updates and what obsoletes or updates
-  it, errata link) to a message. Disclosure — HTTPS GET to www.rfc-editor.org only (the
-  referenced RFC number leaves the machine); no API key, no files written, no subprocess.
+  it, errata link) to a message; @rfc:<number>#<section> attaches that section of the RFC's text
+  instead of the abstract. Disclosure — HTTPS GET to www.rfc-editor.org only (the referenced RFC
+  number leaves the machine; a section name never does); no API key, no files written, no
+  subprocess.
 author: EloquentBrush0x
 license: MIT
 homepage: https://github.com/EloquentBrush0x/hermes-context-refs
 requires_hermes: ">=0.21"
 tags: [context, reference, ietf, rfc]
 config_schema:
+  max_chars:
+    type: int
+    default: 6000
+    label: Maximum characters
+    description: Longest section attached per reference (200 to 50000); longer text is cut at a word boundary.
   timeout_seconds:
     type: int
     default: 10
