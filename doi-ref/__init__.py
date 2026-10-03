@@ -84,17 +84,18 @@ _OPENER = urllib.request.build_opener(_SameHostRedirectHandler)
 _EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="doi-ref")
 _CROSSREF_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="doi-ref-crossref")
 _crossref_pace = threading.Lock()
-_crossref_last_start = 0.0
+_crossref_last_start = float("-inf")
 
 
 def _paced_crossref(transport: Transport, url: str, timeout: float) -> tuple[int, bytes]:
     """Run one Crossref request on the single Crossref worker, no sooner than the interval allows."""
     global _crossref_last_start
     with _crossref_pace:
-        wait = _crossref_last_start + CROSSREF_MIN_INTERVAL_SECONDS - time.monotonic()
-        if wait > 0:
-            time.sleep(wait)
-        _crossref_last_start = time.monotonic()
+        # perf_counter, and a loop: on Windows monotonic() ticks every ~16 ms and sleep() can wake early.
+        ready = _crossref_last_start + CROSSREF_MIN_INTERVAL_SECONDS
+        while (now := time.perf_counter()) < ready:
+            time.sleep(ready - now)
+        _crossref_last_start = now
     return transport(url, timeout)
 
 

@@ -283,7 +283,7 @@ def test_crossref_requests_run_one_at_a_time_and_spaced(doi, tmp_path: Path):
         with lock:
             active[0] += 1
             peak[0] = max(peak[0], active[0])
-            starts.append(time.monotonic())
+            starts.append(time.perf_counter())
         time.sleep(0.05)
         with lock:
             active[0] -= 1
@@ -298,7 +298,7 @@ def test_crossref_requests_run_one_at_a_time_and_spaced(doi, tmp_path: Path):
     assert "Context Warnings" not in result.message
     assert peak[0] == 1 and len(starts) == 4
     gaps = [b - a for a, b in zip(starts, starts[1:], strict=False)]
-    assert min(gaps) >= doi.CROSSREF_MIN_INTERVAL_SECONDS - 0.01, gaps
+    assert min(gaps) >= doi.CROSSREF_MIN_INTERVAL_SECONDS - 0.002, gaps
 
 
 # -- failures ----------------------------------------------------------------------------------
