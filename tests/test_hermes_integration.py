@@ -10,7 +10,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, WIKI_DIR
+from conftest import DOI_DIR, GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, WIKI_DIR
 
 WIKI_PROBE = textwrap.dedent('''
     import asyncio, json, os, sys
@@ -183,12 +183,43 @@ RFC_PROBE = textwrap.dedent('''
 ''')
 
 
+DOI_PROBE = textwrap.dedent('''
+    import json, os
+    from hermes_cli.plugins import discover_plugins, get_plugin_manager
+    from agent.context_references import get_context_reference_providers, preprocess_context_references
+
+    discover_plugins(force=True)
+    listed = {p["name"]: p for p in get_plugin_manager().list_plugins()}
+    providers = get_context_reference_providers()
+    out = {"listed": listed.get("doi-ref"), "providers": {k: type(p).__name__ for k, p in providers.items()}}
+    calls = []
+    record = {"message": {"DOI": "10.1038/nature14539", "title": ["Deep learning"],
+                          "abstract": "<jats:p>" + "word " * 200 + "</jats:p>"}}
+    def fake(url, timeout):
+        calls.append({"url": url, "timeout": timeout})
+        return (200, json.dumps(record).encode()) if url.endswith("/works/10.1038%2Fnature14539") else (404, b"")
+    if "doi" in providers:
+        providers["doi"]._transport = fake
+    result = preprocess_context_references("Check @doi:10.1038/nature14539 and @doi:10.9999/nope", cwd=os.getcwd(),
+                                           context_length=100000)
+    out["message"] = result.message
+    from tui_gateway import server
+    reply = server.handle_request({"jsonrpc": "2.0", "id": 1, "method": "complete.path",
+                                   "params": {"word": "@doi:10.10"}})
+    out["complete"] = reply.get("result", reply)
+    out["calls"] = calls
+    with open(os.environ["PROBE_OUT"], "w", encoding="utf-8") as fh:
+        json.dump(out, fh, default=str)
+''')
+
+
 def _write_home(home: Path, plugins: dict[str, str]) -> None:
     """Install each ``{plugin_dir_name: settings_yaml}`` into ``home`` and enable it."""
     entries = ""
     for name, settings in plugins.items():
         source = {
             "wiki-ref": WIKI_DIR, "osv-ref": OSV_DIR, "gh-ref": GH_DIR, "pep-ref": PEP_DIR, "rfc-ref": RFC_DIR,
+            "doi-ref": DOI_DIR,
         }[name]
         shutil.copytree(source, home / "plugins" / name, ignore=shutil.ignore_patterns("__pycache__"))
         entries += f"    {name}:\n      settings:\n" + textwrap.indent(settings or "{}\n", "        ")
@@ -359,4 +390,27 @@ def test_hermes_loads_rfc_ref_next_to_pep_ref_and_applies_its_settings(tmp_path:
     assert "--- Attached Context ---" in message
     assert "RFC 9110: HTTP Semantics\nhttps://www.rfc-editor.org/rfc/rfc9110.html" in message
     assert "@rfc:26: plugin expansion error: the RFC Editor has no RFC 26" in message
+    assert out["complete"]["items"] == []
+
+
+# -- doi-ref -------------------------------------------------------------------------------------
+
+def test_hermes_loads_doi_ref_next_to_rfc_ref_and_applies_its_settings(tmp_path: Path):
+    home, work = _dirs(tmp_path)
+    _write_home(home, {"doi-ref": "timeout_seconds: 7\nmax_chars: 300\n", "rfc-ref": ""})
+    out = _probe(DOI_PROBE, home, work)
+
+    assert out["listed"]["enabled"] is True
+    assert out["providers"] == {"doi": "DoiReferenceProvider", "rfc": "RfcReferenceProvider"}
+    assert sorted(c["url"] for c in out["calls"]) == [
+        "https://api.crossref.org/works/10.1038%2Fnature14539",
+        "https://api.crossref.org/works/10.9999%2Fnope",
+        "https://api.datacite.org/dois/10.9999%2Fnope",
+    ]
+    assert {c["timeout"] for c in out["calls"] if "crossref" in c["url"]} == {7}
+    message = out["message"]
+    assert "--- Attached Context ---" in message
+    assert "DOI 10.1038/nature14539: Deep learning\nhttps://doi.org/10.1038/nature14539" in message
+    assert "(abstract truncated to 300 characters)" in message
+    assert "@doi:10.9999/nope: plugin expansion error: neither Crossref nor DataCite has DOI 10.9999/nope" in message
     assert out["complete"]["items"] == []

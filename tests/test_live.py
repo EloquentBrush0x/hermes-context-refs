@@ -1,4 +1,4 @@
-"""Against the real Wikipedia, OSV, GitHub, PEP and RFC Editor sites.
+"""Against the real Wikipedia, OSV, GitHub, PEP, RFC Editor, Crossref and DataCite sites.
 
 Opt-in: CONTEXT_REFS_LIVE=1 (CI's daily run sets it).
 """
@@ -12,7 +12,7 @@ import pytest
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("CONTEXT_REFS_LIVE") != "1",
-    reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV, GitHub, peps.python.org and the RFC Editor",
+    reason="set CONTEXT_REFS_LIVE=1 to call Wikipedia, OSV, GitHub, PEP, RFC Editor, Crossref and DataCite sites",
 )
 
 
@@ -175,3 +175,22 @@ def test_live_rfc_sections_from_current_and_paginated_texts(rfc):
     assert "#section-9.3.1" in run(provider.expand("9110#name-get")).splitlines()[1]
     with pytest.raises(rfc.RfcRefError, match="RFC 8 has no plain-text version"):
         run(provider.expand("8#1"))
+
+
+def test_live_doi_from_crossref_with_a_retraction(doi):
+    provider = doi.DoiReferenceProvider()
+    lines = run(provider.expand("https://doi.org/10.1038/nature14539")).splitlines()
+    assert lines[:2] == ["DOI 10.1038/nature14539: Deep learning", "https://doi.org/10.1038/nature14539"]
+    assert "Authors: Yann LeCun; Yoshua Bengio; Geoffrey Hinton" in lines
+    retracted = run(provider.expand("doi:10.1016/S0140-6736(97)11096-0")).splitlines()
+    assert any(line.startswith("RETRACTED (2010-02-06): notice https://doi.org/") for line in retracted)
+
+
+def test_live_doi_from_datacite_and_a_missing_doi(doi):
+    provider = doi.DoiReferenceProvider()
+    text = run(provider.expand("10.48550/arXiv.1706.03762"))
+    assert text.splitlines()[0] == "DOI 10.48550/arxiv.1706.03762: Attention Is All You Need"
+    assert "Abstract:\nThe dominant sequence transduction models" in text
+    assert "Source: DataCite metadata." in text
+    with pytest.raises(doi.DoiRefError, match="neither Crossref nor DataCite has DOI 10.9999/hermes-doi-ref-missing"):
+        run(provider.expand("10.9999/hermes-doi-ref-missing"))

@@ -11,6 +11,7 @@ Each plugin lives in its own directory and is installed on its own.
 | [gh-ref](gh-ref/) | `@gh:owner/repo#123`: a GitHub issue or pull request with its latest comments | GitHub REST API, anonymous |
 | [pep-ref](pep-ref/) | `@pep:<number>`: a PEP's status, authors and first section; `@pep:<number>#<section>`: one section | peps.python.org, no key |
 | [rfc-ref](rfc-ref/) | `@rfc:<number>`: an RFC's status, abstract and what obsoletes or updates it; `@rfc:<number>#<section>`: one section | RFC Editor, no key |
+| [doi-ref](doi-ref/) | `@doi:<doi>`: a paper's, dataset's or software release's metadata, abstract and retraction notices | Crossref and DataCite APIs, no key |
 
 ## Development
 
@@ -23,13 +24,14 @@ PYTHONPATH=../hermes-agent uv run --project ../hermes-agent --no-sync python -m 
 ```
 
 - `tests/test_wiki_ref.py`, `tests/test_osv_ref.py`, `tests/test_gh_ref.py`, `tests/test_pep_ref.py`,
-  `tests/test_rfc_ref.py`: each plugin's providers against Hermes's real reference parser and
+  `tests/test_rfc_ref.py`, `tests/test_doi_ref.py`: each plugin's providers against Hermes's real reference parser and
   expander. `tests/fixtures/` holds pages, index entries and records taken from the real sites.
 - `tests/test_hermes_integration.py`: loads the plugins through Hermes's plugin manager and checks
   settings and `complete.path` autocomplete.
 - `tests/test_e2e_chat.py`: real `hermes chat` turns against local fake model, Wikipedia, OSV,
-  GitHub, peps.python.org and RFC Editor servers; asserts what reaches the model.
-- `tests/test_live.py`: the real Wikipedia, OSV, GitHub, PEP and RFC Editor sites, only with `CONTEXT_REFS_LIVE=1`
+  GitHub, peps.python.org, RFC Editor, Crossref and DataCite servers; asserts what reaches the model.
+- `tests/test_live.py`: the real Wikipedia, OSV, GitHub, PEP, RFC Editor, Crossref and DataCite sites,
+  only with `CONTEXT_REFS_LIVE=1`
   (GitHub tests skip when the anonymous rate limit of the runner's IP address is used up).
 
 CI runs the suite on Linux, macOS and Windows against Hermes 0.21.0 and Hermes main, runs

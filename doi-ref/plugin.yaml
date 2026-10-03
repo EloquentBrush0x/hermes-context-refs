@@ -1,0 +1,26 @@
+name: doi-ref
+version: 1.0.0
+manifest_version: 2
+api_version: 1
+description: >-
+  @doi:<doi> context references: attach a paper's, dataset's or software release's metadata
+  (title, authors, venue, publisher, date, type, citation count, license, abstract, and any
+  retraction or correction notice) from Crossref or DataCite to a message. Disclosure — HTTPS GET
+  to api.crossref.org and, for DOIs Crossref lacks, api.datacite.org only (the referenced DOI
+  leaves the machine); no API key, no files written, no subprocess.
+author: EloquentBrush0x
+license: MIT
+homepage: https://github.com/EloquentBrush0x/hermes-context-refs
+requires_hermes: ">=0.21"
+tags: [context, reference, doi, crossref, datacite, citation]
+config_schema:
+  max_chars:
+    type: int
+    default: 6000
+    label: Maximum characters
+    description: Longest abstract attached per reference (200 to 50000); longer text is cut at a word boundary.
+  timeout_seconds:
+    type: int
+    default: 10
+    label: Timeout (seconds)
+    description: How long one reference may wait for Crossref and DataCite together (1 to 30).

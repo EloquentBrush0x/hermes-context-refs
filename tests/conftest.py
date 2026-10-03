@@ -14,6 +14,7 @@ OSV_DIR = REPO_ROOT / "osv-ref"
 GH_DIR = REPO_ROOT / "gh-ref"
 PEP_DIR = REPO_ROOT / "pep-ref"
 RFC_DIR = REPO_ROOT / "rfc-ref"
+DOI_DIR = REPO_ROOT / "doi-ref"
 TESTS_DIR = Path(__file__).resolve().parent
 FIXTURES = TESTS_DIR / "fixtures"
 
@@ -58,6 +59,11 @@ def pep():
 @pytest.fixture
 def rfc():
     return load_plugin_module(RFC_DIR)
+
+
+@pytest.fixture
+def doi():
+    return load_plugin_module(DOI_DIR)
 
 
 @pytest.fixture(autouse=True)

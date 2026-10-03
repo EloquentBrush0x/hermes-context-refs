@@ -147,8 +147,27 @@ def _rfc_answer(path: str) -> tuple[int, str, bytes]:
     return 404, "text/plain;charset=utf-8", b"404 - Not found"
 
 
+# api.crossref.org and api.datacite.org: the real records from tests/fixtures/doi.
+DOI_RECORDS = {
+    ("api.crossref.org", "10.1038/nature14539"): (_FIXTURES / "doi" / "crossref-nature14539.json").read_bytes(),
+    ("api.datacite.org", "10.48550/arxiv.1706.03762"):
+        (_FIXTURES / "doi" / "datacite-arxiv-1706.03762.json").read_bytes(),
+}
+
+
+def _doi_answer(host: str, path: str) -> tuple[int, str, bytes]:
+    match = re.fullmatch(r"/(?:works|dois)/(.+)", path)
+    record = DOI_RECORDS.get((host, urllib.parse.unquote(match.group(1)).lower())) if match else None
+    if record:
+        return 200, "application/json", record
+    if host == "api.crossref.org":
+        return 404, "text/plain", b"Resource not found."
+    return 404, "application/vnd.api+json", b'{"errors":[{"status":"404","title":"The resource does not exist."}]}'
+
+
 class FakeServer:
-    """One HTTP server playing the model API, ``/w/api.php``, OSV, GitHub, peps.python.org and the RFC Editor."""
+    """One HTTP server playing the model API, ``/w/api.php``, OSV, GitHub, peps.python.org, the RFC Editor,
+    Crossref and DataCite."""
 
     def __init__(self) -> None:
         self.chat_requests: list[dict[str, Any]] = []
@@ -157,6 +176,7 @@ class FakeServer:
         self.github_requests: list[dict[str, Any]] = []
         self.pep_requests: list[dict[str, Any]] = []
         self.rfc_requests: list[dict[str, Any]] = []
+        self.doi_requests: list[dict[str, Any]] = []
         self._lock = threading.Lock()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
@@ -224,6 +244,14 @@ class FakeServer:
                     with server._lock:
                         server.pep_requests.append({"path": url.path, "user_agent": self.headers.get("User-Agent", "")})
                     self._raw(*_pep_answer(url.path))
+                    return
+                if self.headers.get("X-Test-Host") in ("api.crossref.org", "api.datacite.org"):
+                    host = self.headers["X-Test-Host"]
+                    with server._lock:
+                        server.doi_requests.append({
+                            "host": host, "path": url.path, "user_agent": self.headers.get("User-Agent", ""),
+                        })
+                    self._raw(*_doi_answer(host, url.path))
                     return
                 if self.headers.get("X-Test-Host") == "www.rfc-editor.org":
                     with server._lock:

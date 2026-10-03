@@ -1,0 +1,95 @@
+{
+ "status": "ok",
+ "message-type": "work",
+ "message-version": "1.0.0",
+ "message": {
+  "reference-count": 62,
+  "publisher": "VFAST Research Platform",
+  "issue": "1",
+  "short-container-title": [
+   "VAWKUM trans. comput. sci."
+  ],
+  "abstract": "<jats:p>Flood is natural event; it brings a lot of destruction. Due to flood not only loss of human life and misery of millions of people occur, but tremendous damages occur in public and private property.  It cannot be stopped, but can be managed to save the lives and property of the people. To manage a flood, there are two solutions, physical and logical. In physical solutions, different physical constructions are made to manage flood like levee, channel improvement, flood ways, and widening of barrages, but these control works have many deficiencies. In logical solutions, models and techniques are developed to manage the flood, however, these systems also have some deficiencies. To overcome the deficiencies in the existing models, we focus on to develop a flood management model consisting of an off-river reservoir and diverted canals having regulators. Reservoirs are most effective water storage that smooth down extreme inflow.  The optimal operations of reservoirs determine the release and accumulation of water over time. For effective operative decision, operating rules will be defined in Z-Specification. For these operating rules, we will develop an algorithm, will verify the rules in Z-Notation and will implement them in the Java programming language.</jats:p>",
+  "DOI": "10.21015/vtcs.v9i1.1001",
+  "type": "journal-article",
+  "page": "34-46",
+  "source": "Crossref",
+  "is-referenced-by-count": 0,
+  "title": [
+   "Specification of Operating Rules for Water Reservoir to Manage Flood Using Z-Notation"
+  ],
+  "prefix": "10.21015",
+  "volume": "9",
+  "author": [
+   {
+    "given": "Hasrat",
+    "family": "Alam",
+    "sequence": "first",
+    "affiliation": [],
+    "role": [
+     {
+      "role": "author",
+      "vocabulary": "crossref"
+     }
+    ]
+   }
+  ],
+  "member": "8598",
+  "published-online": {
+   "date-parts": [
+    [
+     2021,
+     12,
+     5
+    ]
+   ]
+  },
+  "container-title": [
+   "VAWKUM Transactions on Computer Sciences"
+  ],
+  "original-title": [],
+  "score": 1,
+  "resource": {
+   "primary": {
+    "URL": "https://vfast.org/journals/index.php/VTCS/article/view/1001"
+   }
+  },
+  "subtitle": [],
+  "short-title": [],
+  "issued": {
+   "date-parts": [
+    [
+     2021,
+     12,
+     5
+    ]
+   ]
+  },
+  "references-count": 62,
+  "URL": "https://doi.org/10.21015/vtcs.v9i1.1001",
+  "ISSN": [
+   "2308-8168",
+   "2411-6335"
+  ],
+  "issn-type": [
+   {
+    "type": "electronic",
+    "value": "2308-8168"
+   },
+   {
+    "type": "print",
+    "value": "2411-6335"
+   }
+  ],
+  "subject": [],
+  "published": {
+   "date-parts": [
+    [
+     2021,
+     12,
+     5
+    ]
+   ]
+  }
+ }
+}

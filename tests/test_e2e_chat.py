@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, TESTS_DIR, WIKI_DIR
+from conftest import DOI_DIR, GH_DIR, OSV_DIR, PEP_DIR, RFC_DIR, TESTS_DIR, WIKI_DIR
 from fakes import MODEL_ID, REPLY, FakeServer
 
 _SCRUBBED_ENV_PREFIXES = ("OPENAI", "ANTHROPIC", "OPENROUTER", "GIT_", "HERMES_")
@@ -277,3 +277,36 @@ def test_an_unissued_rfc_reaches_the_model_as_a_warning(tmp_path: Path):
         [first_turn, *_] = [m for m in fake.user_messages() if "@rfc:26" in m]
         assert "--- Context Warnings ---" in first_turn, first_turn
         assert "the RFC Editor has no RFC 26" in first_turn, first_turn
+
+
+def test_a_chat_turn_sends_crossref_and_datacite_records_to_the_model(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin, plugins=(DOI_DIR,))
+        message = (
+            "Compare @doi:10.1038/nature14539 with @doi:https://doi.org/10.48550/arXiv.1706.03762 "
+            "and @doi:10.9999/nope in one line."
+        )
+        proc = _chat(home, work, fake.origin, message)
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        assert REPLY in proc.stdout, detail
+        assert sorted((r["host"], r["path"]) for r in fake.doi_requests) == [
+            ("api.crossref.org", "/works/10.1038%2Fnature14539"),
+            ("api.crossref.org", "/works/10.48550%2FarXiv.1706.03762"),
+            ("api.crossref.org", "/works/10.9999%2Fnope"),
+            ("api.datacite.org", "/dois/10.48550%2FarXiv.1706.03762"),
+            ("api.datacite.org", "/dois/10.9999%2Fnope"),
+        ], fake.doi_requests
+        assert {r["user_agent"].split(" ")[0] for r in fake.doi_requests} == {"hermes-doi-ref/1.0.0"}
+        # The turn is longer than the 1000-character copy some Hermes versions send to the title helper first.
+        first_turn = max((m for m in fake.user_messages() if "@doi:10.1038/nature14539" in m), key=len)
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert "DOI 10.1038/nature14539: Deep learning\nhttps://doi.org/10.1038/nature14539" in first_turn
+        assert "Authors: Yann LeCun; Yoshua Bengio; Geoffrey Hinton" in first_turn
+        assert "DOI 10.48550/arxiv.1706.03762: Attention Is All You Need" in first_turn
+        assert "Abstract:\nThe dominant sequence transduction models" in first_turn
+        assert "--- Context Warnings ---" in first_turn, first_turn
+        assert "neither Crossref nor DataCite has DOI 10.9999/nope" in first_turn, first_turn
