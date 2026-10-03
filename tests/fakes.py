@@ -101,6 +101,11 @@ def _github_answer(path: str) -> tuple[int, Any]:
 
 def _query_answer(language: str, title: str, whole_article: bool) -> dict[str, Any]:
     normalized = " ".join(title.replace("_", " ").split())
+    prefix, sep, rest = normalized.partition(":")
+    if sep and any(lang == prefix for lang, _ in ARTICLES):
+        # A language prefix: Wikipedia answers with an interwiki link (iwurl=1 adds its address).
+        url = f"https://{prefix}.wikipedia.org/wiki/{urllib.parse.quote(rest.strip().replace(' ', '_'))}"
+        return {"batchcomplete": True, "query": {"interwiki": [{"title": normalized, "iw": prefix, "url": url}]}}
     page = dict(ARTICLES.get((language, normalized)) or {"ns": 0, "title": normalized, "missing": True})
     full = page.pop("full_extract", None)
     if whole_article and full:

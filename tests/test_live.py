@@ -49,6 +49,18 @@ def test_live_section_and_unknown_section(wiki):
         run(wiki.WikiReferenceProvider().expand("Berlin#Histroy"))
 
 
+def test_live_language_prefix_and_article_address(wiki):
+    """Wikipedia's own interwiki answer picks the edition; "Re:Zero" stays an English title."""
+    by_prefix = run(wiki.WikiReferenceProvider().expand("de:Berlin#Geschichte")).splitlines()
+    assert by_prefix[1:3] == ["https://de.wikipedia.org/wiki/Berlin#Geschichte", "Section: Geschichte"]
+    assert "(resolved from 'de:Berlin')" in by_prefix
+    by_address = run(wiki.WikiReferenceProvider().expand("https://en.m.wikipedia.org/wiki/Berlin#1900%E2%80%931945"))
+    assert by_address.splitlines()[2] == "Section: History › 1900–1945"
+    assert run(wiki.WikiReferenceProvider().expand("Re:Zero")).startswith("Wikipedia (en): Re:Zero")
+    with pytest.raises(wiki.WikiRefError, match="links to en.wiktionary.org"):
+        run(wiki.WikiReferenceProvider().expand("wikt:cat"))
+
+
 @pytest.mark.parametrize("title", ["Berlin", "Alan Turing", "Python (programming language)"])
 def test_live_extract_headings_have_the_expected_shape(wiki, title):
     """Section cutting relies on TextExtracts marking every heading as its own "== Name ==" line."""

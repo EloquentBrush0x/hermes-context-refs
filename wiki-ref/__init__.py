@@ -2,8 +2,10 @@
 
 Typing ``@wiki:Alan_Turing`` (or ``@wiki:"Alan Turing"``) in a message attaches the
 lead section of that Wikipedia article to the turn; ``@wiki:Berlin#History`` attaches
-one section with its subsections instead. Typing ``@wiki:`` in the TUI or Desktop
-composer suggests article titles.
+one section with its subsections instead. A reference can also name another edition,
+as a language prefix (``@wiki:de:Berlin``) or as an article address
+(``@wiki:https://de.wikipedia.org/wiki/Berlin#Geschichte``). Typing ``@wiki:`` in the
+TUI or Desktop composer suggests article titles.
 
 The plugin only talks to ``https://<language>.wikipedia.org/w/api.php``. It writes
 nothing to disk, spawns no subprocess and needs no API key.
@@ -25,7 +27,7 @@ from typing import Any
 
 from agent.context_references import ContextCompletionItem, ContextReferenceProvider
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 PREFIX = "wiki"
 PLUGIN_ID = "wiki-ref"
@@ -50,6 +52,11 @@ _HEADING_RE = re.compile(r"^(={2,6}) (.+?) \1$", re.MULTILINE)
 # "zh-yue", "be-tarask"). Anything else is rejected, which also keeps the value
 # safe to put in a hostname.
 _LANGUAGE_RE = re.compile(r"^[a-z]{2,12}(?:-[a-z]{2,12}){0,2}$")
+# An article address: <edition>.wikipedia.org or the mobile <edition>.m.wikipedia.org.
+_ARTICLE_HOST_RE = re.compile(r"^([a-z]{2,12}(?:-[a-z]{2,12}){0,2})(?:\.m)?\.wikipedia\.org$")
+# Hosts under wikipedia.org that are not an edition with an article API.
+_NOT_AN_EDITION = {"www"}
+_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 # Mirrors how Hermes reads a bare ``@wiki:<value>``: trailing ",.;!?" and unbalanced
 # closing brackets are dropped, and whitespace ends the value.
 _TRAILING_PUNCTUATION = ",.;!?"
@@ -145,18 +152,55 @@ def _spaced(text: str) -> str:
     return " ".join(text.replace("_", " ").split())
 
 
+def _checked_title(page: str) -> str:
+    title = _spaced(page)
+    if not title:
+        raise WikiRefError('no article title; write @wiki:Title or @wiki:"Title with spaces"')
+    if len(title.encode("utf-8")) > MAX_TITLE_LENGTH:
+        raise WikiRefError(f"title is longer than Wikipedia's {MAX_TITLE_LENGTH}-byte limit")
+    return title
+
+
 def parse_target(target: str) -> tuple[str, str]:
     """Split a reference target into ``(title, section)``; underscores read as spaces.
 
     Wikipedia titles cannot contain "#", so the first "#" always starts the section.
     """
     page, _, section = target.strip().partition("#")
-    title = _spaced(page)
-    if not title:
-        raise WikiRefError('no article title; write @wiki:Title or @wiki:"Title with spaces"')
-    if len(title.encode("utf-8")) > MAX_TITLE_LENGTH:
-        raise WikiRefError(f"title is longer than Wikipedia's {MAX_TITLE_LENGTH}-byte limit")
-    return title, _spaced(section)
+    return _checked_title(page), _spaced(section)
+
+
+def parse_article_url(target: str) -> tuple[str, str, str] | None:
+    """Read a Wikipedia article address as ``(edition, title, section)``.
+
+    Accepts ``https://<edition>.wikipedia.org/wiki/<Title>#<Section>``, the mobile
+    ``<edition>.m.wikipedia.org`` host and ``/w/index.php?title=<Title>``. ``None`` when
+    ``target`` is not a web address at all; any other address is refused.
+    """
+    text = target.strip()
+    if not _URL_RE.match(text):
+        return None
+    parts = urllib.parse.urlsplit(text)
+    host = (parts.hostname or "").lower()
+    match = _ARTICLE_HOST_RE.match(host)
+    if not match or match.group(1) in _NOT_AN_EDITION:
+        raise WikiRefError(
+            f"{host or text!r} is not a Wikipedia edition; "
+            "use an address like https://en.wikipedia.org/wiki/Alan_Turing"
+        )
+    query = urllib.parse.parse_qs(parts.query)
+    if {"oldid", "diff", "curid"} & set(query):
+        raise WikiRefError(
+            "wiki-ref attaches an article's current text, not a revision, diff or page-id link; "
+            f"use https://{host}/wiki/<Title>"
+        )
+    if parts.path.startswith("/wiki/"):
+        page = urllib.parse.unquote(parts.path[len("/wiki/"):])
+    elif parts.path == "/w/index.php":
+        page = (query.get("title") or [""])[0]
+    else:
+        raise WikiRefError(f"{text!r} is not a Wikipedia article address; use https://{host}/wiki/<Title>")
+    return match.group(1), _checked_title(page), _spaced(urllib.parse.unquote(parts.fragment))
 
 
 def find_section(extract: str, wanted: str) -> tuple[list[str], str] | None:
@@ -261,6 +305,44 @@ def render_article(
     return "\n".join(lines)
 
 
+def _article_params(title: str, section: str) -> dict:
+    params = {
+        "action": "query", "format": "json", "formatversion": "2", "redirects": "1",
+        "prop": "extracts|description|info|pageprops", "explaintext": "1",
+        "inprop": "url", "ppprop": "disambiguation", "iwurl": "1", "titles": title,
+    }
+    # A section needs the whole article's text, cut here; the section name never leaves the machine.
+    params.update({"exsectionformat": "wiki"} if section else {"exintro": "1"})
+    return params
+
+
+def _interwiki_link(data: Any) -> dict | None:
+    """The ``query.interwiki`` entry of an answer that resolved the title to another wiki."""
+    query = data.get("query") if isinstance(data, dict) else None
+    if not isinstance(query, dict):
+        return None
+    links = query.get("interwiki")
+    return links[0] if isinstance(links, list) and links and isinstance(links[0], dict) else None
+
+
+def _edition_of(link: dict, requested: str) -> tuple[str, str]:
+    """``(edition, title)`` an interwiki answer points at; anything but a Wikipedia article is refused."""
+    url = str(link.get("url") or "")
+    target = urllib.parse.urlsplit(url).hostname or url or "another wiki"
+    try:
+        parsed = parse_article_url(url)
+    except WikiRefError:
+        parsed = None
+        if _ARTICLE_HOST_RE.match(target):
+            raise WikiRefError(f"{requested!r} names {target} but no article; write @wiki:{requested}<Title>") from None
+    if not parsed:
+        raise WikiRefError(
+            f"{requested!r} links to {target}, not to a Wikipedia article; wiki-ref reads Wikipedia only"
+        )
+    language, title, _section = parsed
+    return language, title
+
+
 class WikiReferenceProvider(ContextReferenceProvider):
     """``@wiki:<title>``: the lead section of a Wikipedia article; ``@wiki:<title>#<section>``: one section."""
 
@@ -321,18 +403,26 @@ class WikiReferenceProvider(ContextReferenceProvider):
             raise WikiRefError(f"unreadable answer from {host}: {exc}") from None
 
     async def expand(self, target: str) -> str | None:
-        title, section = parse_target(target)
-        language = self.language()
+        from_url = parse_article_url(target)
+        if from_url:
+            language, title, section = from_url
+        else:
+            title, section = parse_target(target)
+            language = self.language()
         max_chars = self._bounded_int("max_chars", DEFAULT_MAX_CHARS, MAX_CHARS_RANGE)
         timeout = self._bounded_int("timeout_seconds", DEFAULT_TIMEOUT_SECONDS, TIMEOUT_RANGE)
-        params = {
-            "action": "query", "format": "json", "formatversion": "2", "redirects": "1",
-            "prop": "extracts|description|info|pageprops", "explaintext": "1",
-            "inprop": "url", "ppprop": "disambiguation", "titles": title,
-        }
-        # A section needs the whole article's text, cut here; the section name never leaves the machine.
-        params.update({"exsectionformat": "wiki"} if section else {"exintro": "1"})
-        data = await self._query(language, params, timeout)
+        requested = title
+        data = await self._query(language, _article_params(title, section), timeout)
+        interwiki = _interwiki_link(data)
+        if interwiki is not None:
+            # "de:Berlin" names another edition. Wikipedia decides what is a prefix, so a
+            # title such as "Re:Zero" stays a title; one hop is followed, no further.
+            language, title = _edition_of(interwiki, requested)
+            data = await self._query(language, _article_params(title, section), timeout)
+            if _interwiki_link(data) is not None:
+                raise WikiRefError(
+                    f"{title!r} on {language}.wikipedia.org is itself an interwiki link; name the article directly"
+                )
         pages = (data.get("query") or {}).get("pages") if isinstance(data, dict) else None
         if not isinstance(pages, list) or not pages or not isinstance(pages[0], dict):
             raise WikiRefError(f"unexpected answer from {language}.wikipedia.org for {title!r}")
@@ -345,7 +435,7 @@ class WikiReferenceProvider(ContextReferenceProvider):
         if not section:
             if not (page.get("extract") or "").strip():
                 raise WikiRefError(f"{resolved!r} on {language}.wikipedia.org has no text lead section")
-            return render_article(page, language=language, requested=title, max_chars=max_chars)
+            return render_article(page, language=language, requested=requested, max_chars=max_chars)
         extract = page.get("extract") or ""
         found = find_section(extract, section)
         if found is None:
@@ -354,12 +444,13 @@ class WikiReferenceProvider(ContextReferenceProvider):
             raise WikiRefError(
                 f"section {found[0][-1]!r} of {resolved!r} has no text in Wikipedia's plain-text extract"
             )
-        return render_article(page, language=language, requested=title, max_chars=max_chars, section=found)
+        return render_article(page, language=language, requested=requested, max_chars=max_chars, section=found)
 
     async def autocomplete(self, query: str, *, limit: int = 10) -> list[ContextCompletionItem]:
         search = " ".join(query.strip().lstrip("".join(_QUOTES)).replace("_", " ").split())
-        # After "#" the user is typing a section: a title suggestion would replace it.
-        if not search or "#" in search:
+        # After "#" the user is typing a section: a title suggestion would replace it. An
+        # address being pasted is not a search term, so it is not sent to Wikipedia.
+        if not search or "#" in search or _URL_RE.match(search):
             return []
         try:
             language = self.language()

@@ -82,6 +82,25 @@ def test_a_chat_turn_sends_one_section_to_the_model(tmp_path: Path):
         assert "marshy woodlands" not in first_turn, first_turn
 
 
+def test_a_chat_turn_reaches_another_edition_by_prefix_and_by_address(tmp_path: Path):
+    home, work = tmp_path / "home", tmp_path / "work"
+    work.mkdir()
+    with FakeServer() as fake:
+        _home(home, fake.origin)
+        message = "Compare @wiki:de:Berlin with @wiki:https://de.m.wikipedia.org/wiki/Berlin in one line."
+        proc = _chat(home, work, fake.origin, message)
+
+        detail = f"exit {proc.returncode}\nstdout:\n{proc.stdout[-4000:]}\nstderr:\n{proc.stderr[-4000:]}"
+        assert proc.returncode == 0, detail
+        lookups = sorted((r["language"], r["params"]["titles"]) for r in fake.wiki_requests)
+        assert lookups == [("de", "Berlin"), ("de", "Berlin"), ("en", "de:Berlin")], fake.wiki_requests
+        [first_turn, *_] = [m for m in fake.user_messages() if "@wiki:de:Berlin" in m]
+        assert "--- Attached Context ---" in first_turn, first_turn
+        assert first_turn.count("Wikipedia (de): Berlin — Hauptstadt der Bundesrepublik Deutschland") == 2, first_turn
+        assert "(resolved from 'de:Berlin')" in first_turn, first_turn
+        assert "Context Warnings" not in first_turn, first_turn
+
+
 def test_a_missing_article_reaches_the_model_as_a_warning(tmp_path: Path):
     home, work = tmp_path / "home", tmp_path / "work"
     work.mkdir()

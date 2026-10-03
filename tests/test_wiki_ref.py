@@ -397,6 +397,154 @@ def test_a_hung_request_is_bounded_by_the_timeout_setting(wiki):
     assert time.monotonic() - started < 5
 
 
+# -- other editions: article addresses and language prefixes -----------------------------------
+
+BERLIN_DE = {
+    **BERLIN, "description": "Hauptstadt der Bundesrepublik Deutschland",
+    "fullurl": "https://de.wikipedia.org/wiki/Berlin",
+    "extract": "Berlin ist die Hauptstadt Deutschlands.\n\n\n== Geschichte ==\nBerlin wurde 1237 erstmals erwähnt.",
+}
+
+
+def interwiki(prefix, title, host):
+    """The answer Wikipedia gives (with iwurl=1) when a title starts with an interwiki prefix."""
+    return {"batchcomplete": True, "query": {"interwiki": [
+        {"title": f"{prefix}:{title}", "iw": prefix, "url": f"https://{host}/wiki/{title}"},
+    ]}}
+
+
+@pytest.mark.parametrize("target, expected", [
+    ("https://de.wikipedia.org/wiki/Berlin", ("de", "Berlin", "")),
+    ("https://de.wikipedia.org/wiki/Berlin#Geschichte", ("de", "Berlin", "Geschichte")),
+    ("HTTPS://EN.WIKIPEDIA.ORG/wiki/Alan_Turing", ("en", "Alan Turing", "")),
+    ("http://en.m.wikipedia.org/wiki/Alan_Turing", ("en", "Alan Turing", "")),
+    ("https://en.wikipedia.org/wiki/Berlin#1900%E2%80%931945", ("en", "Berlin", "1900–1945")),
+    ("https://en.wikipedia.org/wiki/Caf%C3%A9", ("en", "Café", "")),
+    ("https://en.wikipedia.org/wiki/AC/DC", ("en", "AC/DC", "")),
+    ("https://en.wikipedia.org/wiki/Python_(programming_language)?useskin=vector",
+     ("en", "Python (programming language)", "")),
+    ("https://en.wikipedia.org/w/index.php?title=Alan_Turing&action=view", ("en", "Alan Turing", "")),
+    ("https://zh-yue.wikipedia.org/wiki/%E9%A6%99%E6%B8%AF", ("zh-yue", "香港", "")),
+    ("https://simple.wikipedia.org/wiki/Moon#Phases", ("simple", "Moon", "Phases")),
+])
+def test_parse_article_url_reads_edition_title_and_section(wiki, target, expected):
+    assert wiki.parse_article_url(target) == expected
+
+
+@pytest.mark.parametrize("target", ["Alan_Turing", "de:Berlin", "Re:Zero", "en.wikipedia.org/wiki/Berlin", "ftp://x"])
+def test_parse_article_url_leaves_titles_alone(wiki, target):
+    assert wiki.parse_article_url(target) is None
+
+
+@pytest.mark.parametrize("target, message", [
+    ("https://en.wiktionary.org/wiki/cat", "'en.wiktionary.org' is not a Wikipedia edition"),
+    ("https://www.wikipedia.org/wiki/Berlin", "'www.wikipedia.org' is not a Wikipedia edition"),
+    ("https://en.wikipedia.org.example.com/wiki/Berlin", "is not a Wikipedia edition"),
+    ("https://wikipedia.org/wiki/Berlin", "is not a Wikipedia edition"),
+    ("https:///wiki/Berlin", "is not a Wikipedia edition"),
+    ("https://en.wikipedia.org/w/index.php?title=Berlin&oldid=12345", "not a revision, diff or page-id link"),
+    ("https://en.wikipedia.org/w/index.php?diff=1&oldid=2", "not a revision, diff or page-id link"),
+    ("https://en.wikipedia.org/w/index.php?curid=3354", "not a revision, diff or page-id link"),
+    ("https://en.wikipedia.org/w/api.php?action=query", "is not a Wikipedia article address"),
+    ("https://en.wikipedia.org/", "is not a Wikipedia article address"),
+    ("https://en.wikipedia.org/wiki/", "no article title"),
+    ("https://en.wikipedia.org/w/index.php?action=view", "no article title"),
+])
+def test_parse_article_url_refuses_other_addresses(wiki, target, message):
+    with pytest.raises(wiki.WikiRefError, match=re.escape(message)):
+        wiki.parse_article_url(target)
+
+
+@pytest.mark.parametrize("message, target", [
+    ("see @wiki:https://de.wikipedia.org/wiki/Berlin#Geschichte.", "https://de.wikipedia.org/wiki/Berlin#Geschichte"),
+    ("(@wiki:https://en.wikipedia.org/wiki/Python_(programming_language))",
+     "https://en.wikipedia.org/wiki/Python_(programming_language)"),
+    ("@wiki:https://en.wikipedia.org/wiki/Berlin#1900%E2%80%931945?", "https://en.wikipedia.org/wiki/Berlin#1900%E2%80%931945"),
+    ("@wiki:de:Berlin#Geschichte, then", "de:Berlin#Geschichte"),
+])
+def test_addresses_and_prefixes_survive_hermes_parser(wiki, message, target):
+    register_context_reference_provider(wiki.WikiReferenceProvider())
+    [ref] = parse_context_references(message)
+    assert ref.target == target
+
+
+def test_an_address_queries_its_own_edition_whatever_the_language_setting(wiki):
+    transport = RecordingTransport(answer(BERLIN_DE))
+    provider = wiki.WikiReferenceProvider(get_config=config(language="x.y"), transport=transport)
+    text = run(provider.expand("https://de.m.wikipedia.org/wiki/Berlin#Geschichte"))
+
+    [(url, params, _timeout)] = transport.calls
+    assert url == "https://de.wikipedia.org/w/api.php" and params["titles"] == "Berlin"
+    assert text.splitlines()[:3] == [
+        "Wikipedia (de): Berlin — Hauptstadt der Bundesrepublik Deutschland",
+        "https://de.wikipedia.org/wiki/Berlin#Geschichte",
+        "Section: Geschichte",
+    ]
+    assert "resolved from" not in text
+
+
+def test_a_language_prefix_follows_wikipedias_interwiki_answer_to_that_edition(wiki):
+    def responder(url, params, timeout):
+        if url == "https://en.wikipedia.org/w/api.php":
+            return interwiki("de", "Berlin", "de.wikipedia.org")
+        return answer(BERLIN_DE)(url, params, timeout)
+
+    transport = RecordingTransport(responder)
+    text = run(wiki.WikiReferenceProvider(transport=transport).expand("de:Berlin#Geschichte"))
+
+    assert [(call[0], call[1]["titles"]) for call in transport.calls] == [
+        ("https://en.wikipedia.org/w/api.php", "de:Berlin"),
+        ("https://de.wikipedia.org/w/api.php", "Berlin"),
+    ]
+    # iwurl=1 is what makes Wikipedia include the edition's address in an interwiki answer.
+    assert all(call[1]["iwurl"] == "1" for call in transport.calls)
+    assert all(call[1]["exsectionformat"] == "wiki" for call in transport.calls)
+    assert "Section: Geschichte" in text and "1237" in text
+    assert "(resolved from 'de:Berlin')" in text
+
+
+def test_a_title_with_a_colon_is_left_to_wikipedia(wiki):
+    page = {**TURING, "title": "Re:Zero", "fullurl": "https://en.wikipedia.org/wiki/Re:Zero"}
+    transport = RecordingTransport(answer(page))
+    text = run(wiki.WikiReferenceProvider(transport=transport).expand("Re:Zero"))
+    assert len(transport.calls) == 1 and text.startswith("Wikipedia (en): Re:Zero")
+
+
+@pytest.mark.parametrize("data, target, message", [
+    (interwiki("wikt", "cat", "en.wiktionary.org"), "wikt:cat",
+     "'wikt:cat' links to en.wiktionary.org, not to a Wikipedia article"),
+    ({"query": {"interwiki": [{"title": "x:y", "iw": "x"}]}}, "x:y", "'x:y' links to another wiki"),
+    (interwiki("de", "", "de.wikipedia.org"), "de:", "'de:' names de.wikipedia.org but no article"),
+])
+def test_an_interwiki_link_off_wikipedia_is_refused_without_a_second_request(wiki, data, target, message):
+    transport = RecordingTransport(lambda *a: data)
+    with pytest.raises(wiki.WikiRefError, match=re.escape(message)):
+        run(wiki.WikiReferenceProvider(transport=transport).expand(target))
+    assert len(transport.calls) == 1
+
+
+def test_only_one_interwiki_hop_is_followed(wiki):
+    transport = RecordingTransport(lambda *a: interwiki("fr", "Berlin", "fr.wikipedia.org"))
+    with pytest.raises(wiki.WikiRefError, match="'Berlin' on fr.wikipedia.org is itself an interwiki link"):
+        run(wiki.WikiReferenceProvider(transport=transport).expand("fr:Berlin"))
+    assert len(transport.calls) == 2
+
+
+def test_hermes_attaches_another_edition_by_address_and_by_prefix(wiki, tmp_path: Path):
+    def responder(url, params, timeout):
+        if url == "https://en.wikipedia.org/w/api.php":
+            return interwiki("de", "Berlin", "de.wikipedia.org")
+        return answer(BERLIN_DE)(url, params, timeout)
+
+    register_context_reference_provider(wiki.WikiReferenceProvider(transport=RecordingTransport(responder)))
+    result = run(preprocess_context_references_async(
+        "Compare @wiki:https://de.wikipedia.org/wiki/Berlin#Geschichte with @wiki:de:Berlin.",
+        cwd=tmp_path, context_length=100_000,
+    ))
+    assert result.message.count("Wikipedia (de): Berlin") == 2
+    assert "Context Warnings" not in result.message
+
+
 # -- through Hermes's expander -----------------------------------------------------------------
 
 def test_hermes_attaches_the_article_and_reports_failures(wiki, tmp_path: Path):
@@ -469,8 +617,10 @@ def test_autocomplete_suggests_values_that_parse_back(wiki):
         assert wiki.parse_target(ref.target)[0] == title
 
 
-@pytest.mark.parametrize("query", ["", "  ", '"', "Berlin#", "Berlin#Hi", '"New York City#Ea'])
-def test_autocomplete_skips_empty_queries_and_sections_without_a_request(wiki, query):
+@pytest.mark.parametrize("query", [
+    "", "  ", '"', "Berlin#", "Berlin#Hi", '"New York City#Ea', "https://en.wikipedia.org/wiki/Ber", "HTTP://x",
+])
+def test_autocomplete_skips_empty_queries_sections_and_addresses_without_a_request(wiki, query):
     """After "#" the user types a section; Wikipedia would still suggest titles ("Berlin#Hi" gives
     "Berlin High School"), and picking one would replace the section."""
     transport = RecordingTransport(lambda *a: ["", [], [], []])

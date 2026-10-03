@@ -1,13 +1,13 @@
 name: wiki-ref
-version: 1.1.0
+version: 1.2.0
 manifest_version: 2
 api_version: 1
 description: >-
   @wiki:<title> context references: attach the lead section of a Wikipedia article to a
-  message, or one section with @wiki:<title>#<section>, with title autocomplete in the TUI and
-  Desktop composer. Disclosure — HTTPS GET to
-  <language>.wikipedia.org only (the referenced title and autocomplete prefix leave the machine);
-  no API key, no files written, no subprocess.
+  message, or one section with @wiki:<title>#<section>; another edition by @wiki:de:<title> or
+  by the article's address; title autocomplete in the TUI and Desktop composer. Disclosure —
+  HTTPS GET to <edition>.wikipedia.org only (the referenced title and autocomplete prefix leave
+  the machine); no API key, no files written, no subprocess.
 author: EloquentBrush0x
 license: MIT
 homepage: https://github.com/EloquentBrush0x/hermes-context-refs

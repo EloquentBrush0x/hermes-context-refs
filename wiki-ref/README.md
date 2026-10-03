@@ -3,12 +3,15 @@
 `@wiki:<title>` context references for [Hermes Agent](https://github.com/NousResearch/hermes-agent).
 Mention a Wikipedia article in a message and Hermes attaches the article's lead section to that
 turn, the same way `@file:` attaches a file. Add `#Section` to attach one section of the article
-instead.
+instead. A reference can also read another language edition, by prefix or by pasting the
+article's address.
 
 ```text
 Who influenced @wiki:Alan_Turing the most?
 Compare @wiki:"Washington, D.C." with @wiki:Canberra
 What changed in @wiki:Berlin#1900–1945?
+Translate the summary of @wiki:de:Berlin#Geschichte
+Is @wiki:https://fr.wikipedia.org/wiki/Paris up to date?
 ```
 
 Typing `@wiki:` in the TUI or the Desktop composer suggests article titles as you type.
@@ -87,9 +90,31 @@ for example
 - A section that holds only citations or other content Wikipedia leaves out of its plain-text
   extract (for example *Notes* or *References*) is reported instead of attached empty.
 
+## Other editions
+
+The `language` setting picks the edition a plain `@wiki:Title` reads. A single reference can read
+another edition in two ways:
+
+- **Language prefix:** `@wiki:de:Berlin`, `@wiki:fr:Paris#Histoire`, `@wiki:simple:Moon`. This is
+  Wikipedia's own interwiki syntax. Wikipedia decides what counts as a prefix, so a title that
+  merely contains a colon, such as `@wiki:Re:Zero`, is still read as a title. A prefix costs one
+  extra request: the configured edition answers with the link, and the plugin then asks the edition
+  it names. Only that one hop is followed. A prefix that leads off Wikipedia, such as `wikt:` for
+  Wiktionary, is reported instead of followed.
+- **Article address:** paste the address after `@wiki:`, for example
+  `@wiki:https://de.wikipedia.org/wiki/Berlin#Geschichte`. The edition, the title and the section
+  all come from the address. Mobile addresses (`de.m.wikipedia.org`) and
+  `/w/index.php?title=…` work too. Links to an old revision, a diff or a page id (`oldid=`,
+  `diff=`, `curid=`) are refused, because the plugin always attaches the current text. An address
+  on any other site is refused.
+
+The block attached to the message names the edition it came from (`Wikipedia (de): Berlin`), and a
+prefixed reference notes `(resolved from 'de:Berlin')`.
+
 Autocomplete inserts titles in a form that reads back correctly, quoting them when needed. It
 suggests titles only: once a `#` is typed it stays quiet, so it cannot replace the section being
-typed.
+typed. It suggests titles from the configured edition, and it sends nothing while an address is
+being pasted.
 
 ## Settings
 
@@ -101,7 +126,7 @@ plugins:
   entries:
     wiki-ref:
       settings:
-        language: en          # Wikipedia edition code: en, de, fr, simple, zh-yue, ...
+        language: en          # edition for plain @wiki:Title: en, de, fr, simple, zh-yue, ...
         max_chars: 6000       # longest lead section or section attached per reference (200-50000)
         timeout_seconds: 10   # how long one reference may wait for Wikipedia (1-30)
 ```
@@ -111,12 +136,16 @@ context warning on the reference that hit it rather than silently replaced.
 
 ## Security and footprint
 
-- **Network:** HTTPS `GET` requests to `https://<language>.wikipedia.org/w/api.php` only. Redirects
-  are followed only when they stay on the same HTTPS host. Responses larger than 2 MiB are refused.
-  A `#Section` reference is still one request: it downloads the article's plain text and cuts the
-  section locally.
-- **What leaves the machine:** the referenced title (not the section name), the text typed after
-  `@wiki:` while autocomplete is open, and a `User-Agent` of the form
+- **Network:** HTTPS `GET` requests to `https://<edition>.wikipedia.org/w/api.php` only, where the
+  edition is the `language` setting or the one a reference names by prefix or address. No other
+  host is contacted: an address on another site, or an interwiki link that leads off Wikipedia, is
+  refused before any request to it. Redirects are followed only when they stay on the same HTTPS
+  host. Responses larger than 2 MiB are refused. A `#Section` reference is still one request per
+  edition: it downloads the article's plain text and cuts the section locally. A language prefix
+  adds one request (see [Other editions](#other-editions)).
+- **What leaves the machine:** the referenced title (not the section name; for a prefixed reference
+  the configured edition sees the prefix too, as in `de:Berlin`), the text typed after `@wiki:`
+  while autocomplete is open (not a pasted address), and a `User-Agent` of the form
   `hermes-wiki-ref/<version> (+https://github.com/EloquentBrush0x/hermes-context-refs)`, as
   Wikimedia's API etiquette asks for. Nothing else from the conversation is sent.
 - **No credentials:** no API key and no cookies. The only environment variables consulted are the
@@ -133,8 +162,8 @@ context warning on the reference that hit it rather than silently replaced.
 
 - One reference attaches the lead section or one section, not the whole article. Section names are
   not autocompleted yet.
-- One language per profile (the `language` setting); a single reference cannot pick another
-  edition yet.
+- Autocomplete suggests titles from the configured edition only, even after a language prefix.
+- An address always attaches the current text of the article, not the revision it links to.
 - The classic `hermes` CLI prompt does not autocomplete plugin prefixes; typing `@wiki:Title`
   still works there. `hermes chat -Q` (quiet mode) does not expand `@` references at all.
 
