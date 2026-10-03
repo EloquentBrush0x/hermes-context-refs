@@ -39,9 +39,9 @@ CI runs the suite on Linux, macOS and Windows against Hermes 0.21.0 and Hermes m
 changes.
 
 `docs/card.png` (wiki-ref), `docs/osv-ref-card.png` (osv-ref), `docs/gh-ref-card.png` (gh-ref),
-`docs/pep-ref-card.png` (pep-ref) and `docs/rfc-ref-card.png` (rfc-ref) are the catalog cards.
-`docs/make_card.py`, `docs/make_osv_card.py`, `docs/make_gh_card.py`, `docs/make_pep_card.py` and
-`docs/make_rfc_card.py` render them from each plugin's real output and
+`docs/pep-ref-card.png` (pep-ref), `docs/rfc-ref-card.png` (rfc-ref) and `docs/doi-ref-card.png`
+(doi-ref) are the catalog cards. `docs/make_card.py`, `docs/make_osv_card.py`, `docs/make_gh_card.py`,
+`docs/make_pep_card.py`, `docs/make_rfc_card.py` and `docs/make_doi_card.py` render them from each plugin's real output and
 refuse a layout that the docs page hero would crop. They live outside the plugin directories, so
 installs do not carry them.
 
